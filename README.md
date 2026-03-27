@@ -13,7 +13,7 @@ macOS の入力を UDP で Windows へ転送する、最小構成の Universal C
 対応している入力は次のとおりです。
 
 - キーボード
-- macOS の key repeat 転送
+- Windows 側の key repeat
 - modifier key
 - 相対ポインタ移動
 - 左 / 右 / 中クリック
@@ -39,8 +39,8 @@ v1 では次は未対応です。
 
 ## How It Works
 
-macOS 側はキーボードを `IOHIDManager` で受け、押下状態から key repeat も生成します。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
-Windows 側は UDP を受信して `SendInput` で注入します。
+macOS 側はキーボードを `IOHIDManager` で受け、押下状態を UDP で送ります。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
+Windows 側は UDP を受信して `SendInput` で注入し、押下中キーは Windows の設定に合わせて key repeat します。
 
 トグルキーは次です。
 

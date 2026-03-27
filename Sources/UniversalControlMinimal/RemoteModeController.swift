@@ -19,6 +19,7 @@ final class RemoteModeController: @unchecked Sendable {
     private var physicalPressedButtons: Set<UInt8> = []
     private var pendingPointerDX: Int32 = 0
     private var pendingPointerDY: Int32 = 0
+    private var pendingWheelLinesY: Double = 0
     private var toggleSuppressionActive = false
 
     init(sender: UDPEventSender) {
@@ -63,6 +64,32 @@ final class RemoteModeController: @unchecked Sendable {
         }
     }
 
+    func handleCapturedEvent(type: CGEventType, event: CGEvent) {
+        queue.sync {
+            switch type {
+            case .mouseMoved,
+                 .leftMouseDragged,
+                 .rightMouseDragged,
+                 .otherMouseDragged:
+                handleCapturedPointerMotion(event)
+
+            case .leftMouseDown,
+                 .leftMouseUp,
+                 .rightMouseDown,
+                 .rightMouseUp,
+                 .otherMouseDown,
+                 .otherMouseUp:
+                handleCapturedButton(event)
+
+            case .scrollWheel:
+                handleCapturedScroll(event)
+
+            default:
+                break
+            }
+        }
+    }
+
     func shouldSuppress(eventType: CGEventType, keyCode: CGKeyCode?) -> Bool {
         queue.sync {
             if mode == .remote {
@@ -98,10 +125,63 @@ final class RemoteModeController: @unchecked Sendable {
         sender.send(packetEncoder.button(button, isDown: isDown))
     }
 
+    private func handleCapturedPointerMotion(_ event: CGEvent) {
+        guard mode == .remote else { return }
+
+        let dx = Int16(clamping: event.getIntegerValueField(.mouseEventDeltaX))
+        let dy = Int16(clamping: event.getIntegerValueField(.mouseEventDeltaY))
+        guard dx != 0 || dy != 0 else { return }
+
+        pendingPointerDX += Int32(dx)
+        pendingPointerDY += Int32(dy)
+    }
+
+    private func handleCapturedButton(_ event: CGEvent) {
+        let button = UInt8(clamping: event.getIntegerValueField(.mouseEventButtonNumber) + 1)
+        let isDown: Bool
+
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            isDown = true
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp:
+            isDown = false
+        default:
+            return
+        }
+
+        handleButton(button: button, isDown: isDown)
+    }
+
+    private func handleCapturedScroll(_ event: CGEvent) {
+        guard mode == .remote else { return }
+
+        let deltaY = normalizedScrollLines(from: event)
+        guard deltaY != 0 else { return }
+
+        sender.send(packetEncoder.wheel(deltaY: deltaY))
+    }
+
+    private func normalizedScrollLines(from event: CGEvent) -> Int16 {
+        let discreteLines = Int(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
+        if discreteLines != 0 {
+            pendingWheelLinesY = 0
+            return Int16(clamping: discreteLines)
+        }
+
+        let fixedPointLines = Double(event.getIntegerValueField(.scrollWheelEventFixedPtDeltaAxis1)) / 65536.0
+        guard fixedPointLines != 0 else { return 0 }
+
+        pendingWheelLinesY += fixedPointLines
+        let wholeLines = Int(pendingWheelLinesY.rounded(.towardZero))
+        pendingWheelLinesY -= Double(wholeLines)
+        return Int16(clamping: wholeLines)
+    }
+
     private func toggleRemoteMode() {
         switch mode {
         case .local:
             mode = .remote
+            pendingWheelLinesY = 0
             sender.send(packetEncoder.session(active: true))
             sendSync()
             print("Remote mode enabled")
@@ -110,6 +190,7 @@ final class RemoteModeController: @unchecked Sendable {
             mode = .local
             pendingPointerDX = 0
             pendingPointerDY = 0
+            pendingWheelLinesY = 0
             sender.send(packetEncoder.session(active: false))
             print("Remote mode disabled")
         }

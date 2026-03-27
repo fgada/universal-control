@@ -31,19 +31,8 @@ final class HIDInputReceiver: @unchecked Sendable {
             kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
             kIOHIDDeviceUsageKey: kHIDUsage_GD_Keyboard
         ]
-        let mouseMatch: [String: Any] = [
-            kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey: kHIDUsage_GD_Mouse
-        ]
-        let pointerMatch: [String: Any] = [
-            kIOHIDDeviceUsagePageKey: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey: kHIDUsage_GD_Pointer
-        ]
-
         let matches: [CFDictionary] = [
-            keyboardMatch as CFDictionary,
-            mouseMatch as CFDictionary,
-            pointerMatch as CFDictionary
+            keyboardMatch as CFDictionary
         ]
         IOHIDManagerSetDeviceMatchingMultiple(manager, matches as CFArray)
 
@@ -98,56 +87,21 @@ final class HIDInputReceiver: @unchecked Sendable {
         let device = IOHIDElementGetDevice(element)
 
         let usagePage = IOHIDElementGetUsagePage(element)
-        let usage = IOHIDElementGetUsage(element)
         let intValue = IOHIDValueGetIntegerValue(value)
         let timestamp = IOHIDValueGetTimeStamp(value)
         let product = stringProperty(kIOHIDProductKey, device: device) ?? "Unknown"
 
-        switch usagePage {
-        case UInt32(kHIDPage_KeyboardOrKeypad):
-            handleKeyboard(product: product, usage: usage, value: intValue, timestamp: timestamp)
-        case UInt32(kHIDPage_Button):
-            handleButton(product: product, usage: usage, value: intValue, timestamp: timestamp)
-        case UInt32(kHIDPage_GenericDesktop):
-            handleGenericDesktop(product: product, usage: usage, value: intValue, timestamp: timestamp)
-        default:
-            break
+        guard usagePage == UInt32(kHIDPage_KeyboardOrKeypad) else {
+            return
         }
+
+        let usage = IOHIDElementGetUsage(element)
+        handleKeyboard(product: product, usage: usage, value: intValue, timestamp: timestamp)
     }
 
     private func handleKeyboard(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
         let isDown = value != 0
         eventSink(.key(product: product, usage: UInt16(clamping: usage), isDown: isDown, timestamp: timestamp))
-    }
-
-    private func handleButton(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
-        eventSink(
-            .button(
-                product: product,
-                button: UInt8(clamping: usage),
-                isDown: value != 0,
-                timestamp: timestamp
-            )
-        )
-    }
-
-    private func handleGenericDesktop(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
-        switch usage {
-        case UInt32(kHIDUsage_GD_X):
-            let delta = Int16(clamping: value)
-            guard delta != 0 else { return }
-            eventSink(.pointer(product: product, dx: delta, dy: 0, timestamp: timestamp))
-        case UInt32(kHIDUsage_GD_Y):
-            let delta = Int16(clamping: value)
-            guard delta != 0 else { return }
-            eventSink(.pointer(product: product, dx: 0, dy: delta, timestamp: timestamp))
-        case UInt32(kHIDUsage_GD_Wheel):
-            let delta = Int16(clamping: value)
-            guard delta != 0 else { return }
-            eventSink(.wheel(product: product, deltaY: delta, timestamp: timestamp))
-        default:
-            break
-        }
     }
 
     private func stringProperty(_ key: String, device: IOHIDDevice) -> String? {

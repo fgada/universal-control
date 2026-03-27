@@ -14,9 +14,10 @@ macOS の入力を UDP で Windows へ転送する、最小構成の Universal C
 
 - キーボード
 - modifier key
-- 相対マウス移動
+- 相対ポインタ移動
 - 左 / 右 / 中クリック
 - 縦スクロール
+- Magic Trackpad の移動 / タップ / クリック / ドラッグ / 二本指縦スクロール
 
 v1 では次は未対応です。
 
@@ -37,7 +38,7 @@ v1 では次は未対応です。
 
 ## How It Works
 
-macOS 側は `IOHIDManager` で入力を受け、`CGEventTap` でローカルイベントを suppress します。  
+macOS 側はキーボードを `IOHIDManager` で受け、ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
 Windows 側は UDP を受信して `SendInput` で注入します。
 
 トグルキーは次です。

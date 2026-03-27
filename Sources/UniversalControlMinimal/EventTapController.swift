@@ -99,6 +99,8 @@ final class EventTapController: @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
+        remoteModeController.handleCapturedEvent(type: type, event: event)
+
         let keyCode: CGKeyCode?
         if type == .keyDown || type == .keyUp || type == .flagsChanged {
             keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))

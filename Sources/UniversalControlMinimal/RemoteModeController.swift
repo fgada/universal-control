@@ -1,4 +1,5 @@
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 import IOKit.hid
 
@@ -106,7 +107,7 @@ final class RemoteModeController: @unchecked Sendable {
     private func handleKey(usage: UInt16, isDown: Bool) {
         updatePhysicalKeyState(usage: usage, isDown: isDown)
 
-        if isDown, usage == ToggleChord.returnUsage, currentModifiers.hasToggleModifiers {
+        if isDown, usage == ToggleChord.triggerUsage {
             toggleSuppressionActive = true
             toggleRemoteMode()
         }
@@ -245,10 +246,6 @@ final class RemoteModeController: @unchecked Sendable {
         )
     }
 
-    private var currentModifiers: ModifierState {
-        ModifierState.from(usages: physicalPressedKeys)
-    }
-
     private func shouldSuppressForwarding(for usage: UInt16) -> Bool {
         toggleSuppressionActive && ToggleChord.isPartOfChord(usage)
     }
@@ -292,13 +289,7 @@ final class RemoteModeController: @unchecked Sendable {
 
 private enum ToggleKeyCode {
     static let all: Set<CGKeyCode> = [
-        36, // return
-        54, // right command
-        55, // left command
-        58, // left option
-        59, // left control
-        61, // right option
-        62 // right control
+        CGKeyCode(kVK_F19)
     ]
 }
 

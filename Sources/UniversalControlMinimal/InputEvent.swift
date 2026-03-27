@@ -62,24 +62,10 @@ struct ModifierState: OptionSet, CustomStringConvertible, Sendable {
         return names.isEmpty ? "none" : names.joined(separator: "|")
     }
 
-    var hasToggleModifiers: Bool {
-        !intersection([.leftControl, .rightControl].combined).isEmpty
-            && !intersection([.leftOption, .rightOption].combined).isEmpty
-            && !intersection([.leftCommand, .rightCommand].combined).isEmpty
-    }
-
     static func from<S: Sequence>(usages: S) -> ModifierState where S.Element == UInt16 {
         usages.reduce(into: ModifierState()) { state, usage in
             guard let modifier = ModifierState(usage: usage) else { return }
             state.insert(modifier)
-        }
-    }
-}
-
-extension Array where Element == ModifierState {
-    fileprivate var combined: ModifierState {
-        reduce(into: ModifierState()) { result, state in
-            result.formUnion(state)
         }
     }
 }
@@ -111,16 +97,8 @@ struct RemoteSyncState: Sendable {
 }
 
 enum ToggleChord {
-    static let returnUsage = UInt16(kHIDUsage_KeyboardReturnOrEnter)
-    static let modifierUsages: Set<UInt16> = [
-        UInt16(kHIDUsage_KeyboardLeftControl),
-        UInt16(kHIDUsage_KeyboardRightControl),
-        UInt16(kHIDUsage_KeyboardLeftAlt),
-        UInt16(kHIDUsage_KeyboardRightAlt),
-        UInt16(kHIDUsage_KeyboardLeftGUI),
-        UInt16(kHIDUsage_KeyboardRightGUI)
-    ]
-    static let usages: Set<UInt16> = modifierUsages.union([returnUsage])
+    static let triggerUsage = UInt16(kHIDUsage_KeyboardF19)
+    static let usages: Set<UInt16> = [triggerUsage]
 
     static func isPartOfChord(_ usage: UInt16) -> Bool {
         usages.contains(usage)

@@ -44,9 +44,9 @@ Windows 側は UDP を受信して `SendInput` で注入し、押下中キーは
 
 トグルキーは次です。
 
-- `Control + Option + Command + Return`
+- `F19`
 
-この chord 自体はリモートにもローカルにも流さない設計です。
+このトグルキー自体はリモートにもローカルにも流さない設計です。
 
 ## Requirements
 
@@ -107,10 +107,10 @@ swift run universal-control-minimal --target-host 192.168.1.25
 macOS 上で次を押します。
 
 ```text
-Control + Option + Command + Return
+F19
 ```
 
-再度同じ chord を押すとローカルへ戻ります。
+再度 `F19` を押すとローカルへ戻ります。
 
 ## Permissions
 
@@ -152,7 +152,7 @@ macOS 側は初回実行時に次を許可してください。
 ## Known Limitations
 
 - `SendInput` は UIPI 制約を受けるため、管理者権限アプリや UAC 画面では効かないことがあります。
-- macOS の HID 検出と event tap のタイミング差で、トグル chord の最初の modifier down がローカルに一瞬見える可能性があります。
+- macOS の HID 検出と event tap のタイミング差で、`F19` の key down がローカルに一瞬見える可能性があります。
 - 未対応 HID usage は Windows 側でログして無視します。
 - 通信は平文 UDP で、認証も暗号化もありません。
 

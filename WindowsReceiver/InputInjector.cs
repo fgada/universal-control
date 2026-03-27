@@ -27,15 +27,10 @@ internal sealed class InputInjector
 
     internal void SendKeyRepeat(ScanCodeMapping mapping)
     {
-        // SendInput does not reliably turn duplicate key-down injections into
-        // text repeat, so synthesize another press while keeping the key held.
-        var inputs = new[]
-        {
-            CreateKeyboardInput(mapping, isDown: false),
-            CreateKeyboardInput(mapping, isDown: true)
-        };
-
-        Send("keyboard repeat", inputs);
+        // SendInput can drop the repeated character effect when release/press is
+        // submitted as one batch, so emit them as distinct keyboard events.
+        Send("keyboard repeat release", CreateKeyboardInput(mapping, isDown: false));
+        Send("keyboard repeat press", CreateKeyboardInput(mapping, isDown: true));
     }
 
     internal void SendRelativePointer(short dx, short dy)
@@ -163,11 +158,7 @@ internal sealed class InputInjector
 
     private static void Send(string context, INPUT input)
     {
-        Send(context, [input]);
-    }
-
-    private static void Send(string context, INPUT[] inputs)
-    {
+        var inputs = new[] { input };
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {

@@ -12,7 +12,9 @@ final class RemoteModeController: @unchecked Sendable {
     private let queue = DispatchQueue(label: "remote.mode.controller.queue", qos: .userInteractive)
     private let packetEncoder = PacketEncoder()
     private let pointerFlushTimer: DispatchSourceTimer
+    private let keyRepeatTimer: DispatchSourceTimer
     private let syncTimer: DispatchSourceTimer
+    private let keyRepeatConfiguration = KeyRepeatConfiguration.load()
 
     private var mode: Mode = .local
     private var physicalPressedKeys: Set<UInt16> = []
@@ -20,17 +22,19 @@ final class RemoteModeController: @unchecked Sendable {
     private var pendingPointerDX: Int32 = 0
     private var pendingPointerDY: Int32 = 0
     private var pendingWheelLinesY: Double = 0
-    private var pendingTapKeyDowns: [CGKeyCode] = []
-    private var pendingHIDKeyDownUsages: [UInt16] = []
-    private var keyCodeToUsage: [CGKeyCode: UInt16] = [:]
-    private var usageToKeyCode: [UInt16: CGKeyCode] = [:]
     private var toggleSuppressionActive = false
+    private var repeatablePressedKeysInOrder: [UInt16] = []
+    private var repeatingKeyUsage: UInt16?
+    private var nextKeyRepeatAtUptimeNanoseconds: UInt64?
 
     init(sender: UDPEventSender) {
         self.sender = sender
 
         pointerFlushTimer = DispatchSource.makeTimerSource(queue: queue)
         pointerFlushTimer.schedule(deadline: .now() + .milliseconds(1), repeating: .milliseconds(1))
+
+        keyRepeatTimer = DispatchSource.makeTimerSource(queue: queue)
+        keyRepeatTimer.schedule(deadline: .now() + .milliseconds(5), repeating: .milliseconds(5))
 
         syncTimer = DispatchSource.makeTimerSource(queue: queue)
         syncTimer.schedule(deadline: .now() + .milliseconds(200), repeating: .milliseconds(200))
@@ -39,11 +43,16 @@ final class RemoteModeController: @unchecked Sendable {
             self?.flushPointerIfNeeded()
         }
 
+        keyRepeatTimer.setEventHandler { [weak self] in
+            self?.emitKeyRepeatIfNeeded()
+        }
+
         syncTimer.setEventHandler { [weak self] in
             self?.sendSyncIfNeeded()
         }
 
         pointerFlushTimer.resume()
+        keyRepeatTimer.resume()
         syncTimer.resume()
     }
 
@@ -51,7 +60,6 @@ final class RemoteModeController: @unchecked Sendable {
         queue.sync {
             switch event {
             case let .key(_, usage, isDown, _):
-                reconcileKeyboardIdentity(usage: usage, isDown: isDown)
                 handleKey(usage: usage, isDown: isDown)
 
             case let .button(_, button, isDown, _):
@@ -72,9 +80,6 @@ final class RemoteModeController: @unchecked Sendable {
     func handleCapturedEvent(type: CGEventType, event: CGEvent) {
         queue.sync {
             switch type {
-            case .keyDown, .keyUp:
-                handleCapturedKeyEvent(type: type, event: event)
-
             case .mouseMoved,
                  .leftMouseDragged,
                  .rightMouseDragged,
@@ -121,9 +126,34 @@ final class RemoteModeController: @unchecked Sendable {
 
         defer { clearToggleSuppressionIfNeeded() }
 
-        guard mode == .remote else { return }
-        guard !shouldSuppressForwarding(for: usage) else { return }
+        guard mode == .remote else {
+            if !isDown {
+                handleReleasedRepeatableKey(usage)
+            }
+            return
+        }
+
+        guard !shouldSuppressForwarding(for: usage) else {
+            if !isDown {
+                handleReleasedRepeatableKey(usage)
+            }
+            return
+        }
+
         sender.send(packetEncoder.key(usage: usage, isDown: isDown))
+
+        guard isRepeatableKey(usage) else {
+            if !isDown {
+                handleReleasedRepeatableKey(usage)
+            }
+            return
+        }
+
+        if isDown {
+            handlePressedRepeatableKey(usage)
+        } else {
+            handleReleasedRepeatableKey(usage)
+        }
     }
 
     private func handleButton(button: UInt8, isDown: Bool) {
@@ -185,105 +215,13 @@ final class RemoteModeController: @unchecked Sendable {
         return Int16(clamping: wholeLines)
     }
 
-    private func handleCapturedKeyEvent(type: CGEventType, event: CGEvent) {
-        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-
-        switch type {
-        case .keyDown:
-            let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
-            if isAutorepeat {
-                handleCapturedKeyRepeat(keyCode: keyCode)
-            } else {
-                noteCapturedInitialKeyDown(keyCode: keyCode)
-            }
-
-        case .keyUp:
-            noteCapturedKeyUp(keyCode: keyCode)
-
-        default:
-            break
-        }
-    }
-
-    private func handleCapturedKeyRepeat(keyCode: CGKeyCode) {
-        guard let usage = keyCodeToUsage[keyCode] else { return }
-        guard physicalPressedKeys.contains(usage) else { return }
-        guard mode == .remote else { return }
-        guard !shouldSuppressForwarding(for: usage) else { return }
-        sender.send(packetEncoder.key(usage: usage, isDown: true))
-    }
-
-    private func noteCapturedInitialKeyDown(keyCode: CGKeyCode) {
-        if let usage = popFirstPendingHIDUsage() {
-            bind(keyCode: keyCode, to: usage)
-            return
-        }
-
-        pendingTapKeyDowns.append(keyCode)
-    }
-
-    private func noteCapturedKeyUp(keyCode: CGKeyCode) {
-        if let usage = keyCodeToUsage.removeValue(forKey: keyCode) {
-            usageToKeyCode.removeValue(forKey: usage)
-        }
-
-        if let index = pendingTapKeyDowns.firstIndex(of: keyCode) {
-            pendingTapKeyDowns.remove(at: index)
-        }
-    }
-
-    // HID gives us the canonical USB usage, while CGEvent carries the native
-    // autorepeat flag. We pair them in order so repeat keyDown events can reuse
-    // the original HID usage.
-    private func reconcileKeyboardIdentity(usage: UInt16, isDown: Bool) {
-        guard ModifierState(usage: usage) == nil else { return }
-
-        if isDown {
-            if let keyCode = popFirstPendingTapKeyDown() {
-                bind(keyCode: keyCode, to: usage)
-            } else if usageToKeyCode[usage] == nil {
-                pendingHIDKeyDownUsages.append(usage)
-            }
-            return
-        }
-
-        if let keyCode = usageToKeyCode.removeValue(forKey: usage) {
-            keyCodeToUsage.removeValue(forKey: keyCode)
-        }
-
-        if let index = pendingHIDKeyDownUsages.firstIndex(of: usage) {
-            pendingHIDKeyDownUsages.remove(at: index)
-        }
-    }
-
-    private func bind(keyCode: CGKeyCode, to usage: UInt16) {
-        if let previousUsage = keyCodeToUsage[keyCode], previousUsage != usage {
-            usageToKeyCode.removeValue(forKey: previousUsage)
-        }
-
-        if let previousKeyCode = usageToKeyCode[usage], previousKeyCode != keyCode {
-            keyCodeToUsage.removeValue(forKey: previousKeyCode)
-        }
-
-        keyCodeToUsage[keyCode] = usage
-        usageToKeyCode[usage] = keyCode
-    }
-
-    private func popFirstPendingTapKeyDown() -> CGKeyCode? {
-        guard !pendingTapKeyDowns.isEmpty else { return nil }
-        return pendingTapKeyDowns.removeFirst()
-    }
-
-    private func popFirstPendingHIDUsage() -> UInt16? {
-        guard !pendingHIDKeyDownUsages.isEmpty else { return nil }
-        return pendingHIDKeyDownUsages.removeFirst()
-    }
-
     private func toggleRemoteMode() {
         switch mode {
         case .local:
             mode = .remote
             pendingWheelLinesY = 0
+            stopKeyRepeat()
+            repeatablePressedKeysInOrder.removeAll()
             sender.send(packetEncoder.session(active: true))
             sendSync()
             print("Remote mode enabled")
@@ -293,6 +231,8 @@ final class RemoteModeController: @unchecked Sendable {
             pendingPointerDX = 0
             pendingPointerDY = 0
             pendingWheelLinesY = 0
+            stopKeyRepeat()
+            repeatablePressedKeysInOrder.removeAll()
             sender.send(packetEncoder.session(active: false))
             print("Remote mode disabled")
         }
@@ -317,6 +257,22 @@ final class RemoteModeController: @unchecked Sendable {
     private func sendSyncIfNeeded() {
         guard mode == .remote else { return }
         sendSync()
+    }
+
+    private func emitKeyRepeatIfNeeded() {
+        guard mode == .remote else { return }
+        guard let usage = repeatingKeyUsage else { return }
+        guard let nextKeyRepeatAtUptimeNanoseconds else { return }
+        guard physicalPressedKeys.contains(usage) else {
+            stopKeyRepeat()
+            return
+        }
+
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now >= nextKeyRepeatAtUptimeNanoseconds else { return }
+
+        sender.send(packetEncoder.key(usage: usage, isDown: true))
+        self.nextKeyRepeatAtUptimeNanoseconds = now + keyRepeatConfiguration.intervalNanoseconds
     }
 
     private func sendSync() {
@@ -347,6 +303,41 @@ final class RemoteModeController: @unchecked Sendable {
 
     private func shouldSuppressForwarding(for usage: UInt16) -> Bool {
         toggleSuppressionActive && ToggleChord.isPartOfChord(usage)
+    }
+
+    private func isRepeatableKey(_ usage: UInt16) -> Bool {
+        ModifierState(usage: usage) == nil && !ToggleChord.isPartOfChord(usage)
+    }
+
+    private func handlePressedRepeatableKey(_ usage: UInt16) {
+        if let existingIndex = repeatablePressedKeysInOrder.firstIndex(of: usage) {
+            repeatablePressedKeysInOrder.remove(at: existingIndex)
+        }
+
+        repeatablePressedKeysInOrder.append(usage)
+        repeatingKeyUsage = usage
+        nextKeyRepeatAtUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds + keyRepeatConfiguration.initialDelayNanoseconds
+    }
+
+    private func handleReleasedRepeatableKey(_ usage: UInt16) {
+        if let existingIndex = repeatablePressedKeysInOrder.firstIndex(of: usage) {
+            repeatablePressedKeysInOrder.remove(at: existingIndex)
+        }
+
+        guard repeatingKeyUsage == usage else { return }
+
+        if let fallbackUsage = repeatablePressedKeysInOrder.last, physicalPressedKeys.contains(fallbackUsage) {
+            repeatingKeyUsage = fallbackUsage
+            nextKeyRepeatAtUptimeNanoseconds = DispatchTime.now().uptimeNanoseconds + keyRepeatConfiguration.initialDelayNanoseconds
+            return
+        }
+
+        stopKeyRepeat()
+    }
+
+    private func stopKeyRepeat() {
+        repeatingKeyUsage = nil
+        nextKeyRepeatAtUptimeNanoseconds = nil
     }
 
     private func updatePhysicalKeyState(usage: UInt16, isDown: Bool) {
@@ -419,5 +410,24 @@ private extension CGEventType {
         default:
             return false
         }
+    }
+}
+
+private struct KeyRepeatConfiguration {
+    let initialDelayNanoseconds: UInt64
+    let intervalNanoseconds: UInt64
+
+    static func load() -> KeyRepeatConfiguration {
+        let globalDefaults = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
+        let initialUnits = (globalDefaults["InitialKeyRepeat"] as? NSNumber)?.intValue ?? 15
+        let repeatUnits = (globalDefaults["KeyRepeat"] as? NSNumber)?.intValue ?? 2
+
+        let initialDelayMilliseconds = max(initialUnits, 1) * 15
+        let intervalMilliseconds = max(repeatUnits, 1) * 15
+
+        return KeyRepeatConfiguration(
+            initialDelayNanoseconds: UInt64(initialDelayMilliseconds) * 1_000_000,
+            intervalNanoseconds: UInt64(intervalMilliseconds) * 1_000_000
+        )
     }
 }

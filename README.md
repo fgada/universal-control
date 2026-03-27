@@ -39,7 +39,7 @@ v1 では次は未対応です。
 
 ## How It Works
 
-macOS 側はキーボードを `IOHIDManager` で受けつつ、`CGEventTap` の autorepeat も転送します。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
+macOS 側はキーボードを `IOHIDManager` で受け、押下状態から key repeat も生成します。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
 Windows 側は UDP を受信して `SendInput` で注入します。
 
 トグルキーは次です。

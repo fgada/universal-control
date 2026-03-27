@@ -69,7 +69,7 @@ internal sealed class ReceiverState
                 }
                 else
                 {
-                    injector.SendKey(mapping, true);
+                    injector.SendKeyRepeat(mapping);
                 }
 
                 return;

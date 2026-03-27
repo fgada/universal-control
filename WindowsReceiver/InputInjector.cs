@@ -22,34 +22,20 @@ internal sealed class InputInjector
 
     internal void SendKey(ScanCodeMapping mapping, bool isDown)
     {
-        var flags = KeyEventScanCode;
-        if (mapping.Extended)
-        {
-            flags |= KeyEventExtendedKey;
-        }
+        Send("keyboard", CreateKeyboardInput(mapping, isDown));
+    }
 
-        if (!isDown)
+    internal void SendKeyRepeat(ScanCodeMapping mapping)
+    {
+        // SendInput does not reliably turn duplicate key-down injections into
+        // text repeat, so synthesize another press while keeping the key held.
+        var inputs = new[]
         {
-            flags |= KeyEventKeyUp;
-        }
-
-        var input = new INPUT
-        {
-            type = InputKeyboard,
-            U = new InputUnion
-            {
-                ki = new KEYBDINPUT
-                {
-                    wVk = 0,
-                    wScan = mapping.ScanCode,
-                    dwFlags = flags,
-                    time = 0,
-                    dwExtraInfo = IntPtr.Zero
-                }
-            }
+            CreateKeyboardInput(mapping, isDown: false),
+            CreateKeyboardInput(mapping, isDown: true)
         };
 
-        Send("keyboard", input);
+        Send("keyboard repeat", inputs);
     }
 
     internal void SendRelativePointer(short dx, short dy)
@@ -145,9 +131,43 @@ internal sealed class InputInjector
         Send("button", input);
     }
 
+    private static INPUT CreateKeyboardInput(ScanCodeMapping mapping, bool isDown)
+    {
+        var flags = KeyEventScanCode;
+        if (mapping.Extended)
+        {
+            flags |= KeyEventExtendedKey;
+        }
+
+        if (!isDown)
+        {
+            flags |= KeyEventKeyUp;
+        }
+
+        return new INPUT
+        {
+            type = InputKeyboard,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = 0,
+                    wScan = mapping.ScanCode,
+                    dwFlags = flags,
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+    }
+
     private static void Send(string context, INPUT input)
     {
-        var inputs = new[] { input };
+        Send(context, [input]);
+    }
+
+    private static void Send(string context, INPUT[] inputs)
+    {
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {

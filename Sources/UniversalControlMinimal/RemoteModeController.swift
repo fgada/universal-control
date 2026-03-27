@@ -20,6 +20,10 @@ final class RemoteModeController: @unchecked Sendable {
     private var pendingPointerDX: Int32 = 0
     private var pendingPointerDY: Int32 = 0
     private var pendingWheelLinesY: Double = 0
+    private var pendingTapKeyDowns: [CGKeyCode] = []
+    private var pendingHIDKeyDownUsages: [UInt16] = []
+    private var keyCodeToUsage: [CGKeyCode: UInt16] = [:]
+    private var usageToKeyCode: [UInt16: CGKeyCode] = [:]
     private var toggleSuppressionActive = false
 
     init(sender: UDPEventSender) {
@@ -47,6 +51,7 @@ final class RemoteModeController: @unchecked Sendable {
         queue.sync {
             switch event {
             case let .key(_, usage, isDown, _):
+                reconcileKeyboardIdentity(usage: usage, isDown: isDown)
                 handleKey(usage: usage, isDown: isDown)
 
             case let .button(_, button, isDown, _):
@@ -67,6 +72,9 @@ final class RemoteModeController: @unchecked Sendable {
     func handleCapturedEvent(type: CGEventType, event: CGEvent) {
         queue.sync {
             switch type {
+            case .keyDown, .keyUp:
+                handleCapturedKeyEvent(type: type, event: event)
+
             case .mouseMoved,
                  .leftMouseDragged,
                  .rightMouseDragged,
@@ -175,6 +183,100 @@ final class RemoteModeController: @unchecked Sendable {
         let wholeLines = Int(pendingWheelLinesY.rounded(.towardZero))
         pendingWheelLinesY -= Double(wholeLines)
         return Int16(clamping: wholeLines)
+    }
+
+    private func handleCapturedKeyEvent(type: CGEventType, event: CGEvent) {
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+
+        switch type {
+        case .keyDown:
+            let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            if isAutorepeat {
+                handleCapturedKeyRepeat(keyCode: keyCode)
+            } else {
+                noteCapturedInitialKeyDown(keyCode: keyCode)
+            }
+
+        case .keyUp:
+            noteCapturedKeyUp(keyCode: keyCode)
+
+        default:
+            break
+        }
+    }
+
+    private func handleCapturedKeyRepeat(keyCode: CGKeyCode) {
+        guard let usage = keyCodeToUsage[keyCode] else { return }
+        guard physicalPressedKeys.contains(usage) else { return }
+        guard mode == .remote else { return }
+        guard !shouldSuppressForwarding(for: usage) else { return }
+        sender.send(packetEncoder.key(usage: usage, isDown: true))
+    }
+
+    private func noteCapturedInitialKeyDown(keyCode: CGKeyCode) {
+        if let usage = popFirstPendingHIDUsage() {
+            bind(keyCode: keyCode, to: usage)
+            return
+        }
+
+        pendingTapKeyDowns.append(keyCode)
+    }
+
+    private func noteCapturedKeyUp(keyCode: CGKeyCode) {
+        if let usage = keyCodeToUsage.removeValue(forKey: keyCode) {
+            usageToKeyCode.removeValue(forKey: usage)
+        }
+
+        if let index = pendingTapKeyDowns.firstIndex(of: keyCode) {
+            pendingTapKeyDowns.remove(at: index)
+        }
+    }
+
+    // HID gives us the canonical USB usage, while CGEvent carries the native
+    // autorepeat flag. We pair them in order so repeat keyDown events can reuse
+    // the original HID usage.
+    private func reconcileKeyboardIdentity(usage: UInt16, isDown: Bool) {
+        guard ModifierState(usage: usage) == nil else { return }
+
+        if isDown {
+            if let keyCode = popFirstPendingTapKeyDown() {
+                bind(keyCode: keyCode, to: usage)
+            } else if usageToKeyCode[usage] == nil {
+                pendingHIDKeyDownUsages.append(usage)
+            }
+            return
+        }
+
+        if let keyCode = usageToKeyCode.removeValue(forKey: usage) {
+            keyCodeToUsage.removeValue(forKey: keyCode)
+        }
+
+        if let index = pendingHIDKeyDownUsages.firstIndex(of: usage) {
+            pendingHIDKeyDownUsages.remove(at: index)
+        }
+    }
+
+    private func bind(keyCode: CGKeyCode, to usage: UInt16) {
+        if let previousUsage = keyCodeToUsage[keyCode], previousUsage != usage {
+            usageToKeyCode.removeValue(forKey: previousUsage)
+        }
+
+        if let previousKeyCode = usageToKeyCode[usage], previousKeyCode != keyCode {
+            keyCodeToUsage.removeValue(forKey: previousKeyCode)
+        }
+
+        keyCodeToUsage[keyCode] = usage
+        usageToKeyCode[usage] = keyCode
+    }
+
+    private func popFirstPendingTapKeyDown() -> CGKeyCode? {
+        guard !pendingTapKeyDowns.isEmpty else { return nil }
+        return pendingTapKeyDowns.removeFirst()
+    }
+
+    private func popFirstPendingHIDUsage() -> UInt16? {
+        guard !pendingHIDKeyDownUsages.isEmpty else { return nil }
+        return pendingHIDKeyDownUsages.removeFirst()
     }
 
     private func toggleRemoteMode() {

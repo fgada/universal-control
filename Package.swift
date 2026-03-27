@@ -16,9 +16,12 @@ let package = Package(
         .executableTarget(
             name: "UniversalControlMinimal",
             linkerSettings: [
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("Network"),
                 .linkedFramework("IOKit"),
                 .linkedFramework("CoreFoundation")
             ]
         )
     ]
 )
+``

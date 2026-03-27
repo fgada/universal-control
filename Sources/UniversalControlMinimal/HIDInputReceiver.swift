@@ -7,7 +7,6 @@ final class HIDInputReceiver: @unchecked Sendable {
 
     private var manager: IOHIDManager?
     private var runLoop: CFRunLoop?
-    private var modifierState: ModifierState = []
 
     init(eventSink: @escaping @Sendable (InputEvent) -> Void) {
         self.eventSink = eventSink
@@ -119,19 +118,6 @@ final class HIDInputReceiver: @unchecked Sendable {
     private func handleKeyboard(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
         let isDown = value != 0
         eventSink(.key(product: product, usage: UInt16(clamping: usage), isDown: isDown, timestamp: timestamp))
-
-        guard let modifier = ModifierState(usage: usage) else { return }
-
-        let nextState: ModifierState
-        if isDown {
-            nextState = modifierState.union(modifier)
-        } else {
-            nextState = modifierState.subtracting(modifier)
-        }
-
-        guard nextState != modifierState else { return }
-        modifierState = nextState
-        eventSink(.modifier(product: product, state: modifierState, timestamp: timestamp))
     }
 
     private func handleButton(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
@@ -148,11 +134,17 @@ final class HIDInputReceiver: @unchecked Sendable {
     private func handleGenericDesktop(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {
         switch usage {
         case UInt32(kHIDUsage_GD_X):
-            eventSink(.moveX(product: product, delta: Int16(clamping: value), timestamp: timestamp))
+            let delta = Int16(clamping: value)
+            guard delta != 0 else { return }
+            eventSink(.pointer(product: product, dx: delta, dy: 0, timestamp: timestamp))
         case UInt32(kHIDUsage_GD_Y):
-            eventSink(.moveY(product: product, delta: Int16(clamping: value), timestamp: timestamp))
+            let delta = Int16(clamping: value)
+            guard delta != 0 else { return }
+            eventSink(.pointer(product: product, dx: 0, dy: delta, timestamp: timestamp))
         case UInt32(kHIDUsage_GD_Wheel):
-            eventSink(.wheel(product: product, delta: Int16(clamping: value), timestamp: timestamp))
+            let delta = Int16(clamping: value)
+            guard delta != 0 else { return }
+            eventSink(.wheel(product: product, deltaY: delta, timestamp: timestamp))
         default:
             break
         }

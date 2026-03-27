@@ -1,18 +1,16 @@
 import Foundation
 import IOKit.hid
 
-enum PacketType: UInt8 {
-    case keyDown = 1
-    case keyUp = 2
-    case buttonDown = 3
-    case buttonUp = 4
-    case moveX = 5
-    case moveY = 6
-    case wheel = 7
-    case modifier = 8
+enum PacketKind: UInt8 {
+    case session = 1
+    case key = 2
+    case button = 3
+    case pointer = 4
+    case wheel = 5
+    case sync = 6
 }
 
-struct ModifierState: OptionSet, CustomStringConvertible {
+struct ModifierState: OptionSet, CustomStringConvertible, Sendable {
     let rawValue: UInt8
 
     static let leftControl = ModifierState(rawValue: 1 << 0)
@@ -28,23 +26,23 @@ struct ModifierState: OptionSet, CustomStringConvertible {
         self.rawValue = rawValue
     }
 
-    init?(usage: UInt32) {
+    init?(usage: UInt16) {
         switch usage {
-        case UInt32(kHIDUsage_KeyboardLeftControl):
+        case UInt16(kHIDUsage_KeyboardLeftControl):
             self = .leftControl
-        case UInt32(kHIDUsage_KeyboardLeftShift):
+        case UInt16(kHIDUsage_KeyboardLeftShift):
             self = .leftShift
-        case UInt32(kHIDUsage_KeyboardLeftAlt):
+        case UInt16(kHIDUsage_KeyboardLeftAlt):
             self = .leftOption
-        case UInt32(kHIDUsage_KeyboardLeftGUI):
+        case UInt16(kHIDUsage_KeyboardLeftGUI):
             self = .leftCommand
-        case UInt32(kHIDUsage_KeyboardRightControl):
+        case UInt16(kHIDUsage_KeyboardRightControl):
             self = .rightControl
-        case UInt32(kHIDUsage_KeyboardRightShift):
+        case UInt16(kHIDUsage_KeyboardRightShift):
             self = .rightShift
-        case UInt32(kHIDUsage_KeyboardRightAlt):
+        case UInt16(kHIDUsage_KeyboardRightAlt):
             self = .rightOption
-        case UInt32(kHIDUsage_KeyboardRightGUI):
+        case UInt16(kHIDUsage_KeyboardRightGUI):
             self = .rightCommand
         default:
             return nil
@@ -63,47 +61,68 @@ struct ModifierState: OptionSet, CustomStringConvertible {
         if contains(.rightCommand) { names.append("rcmd") }
         return names.isEmpty ? "none" : names.joined(separator: "|")
     }
-}
 
-enum InputEvent {
-    case key(product: String, usage: UInt16, isDown: Bool, timestamp: UInt64)
-    case modifier(product: String, state: ModifierState, timestamp: UInt64)
-    case button(product: String, button: UInt8, isDown: Bool, timestamp: UInt64)
-    case moveX(product: String, delta: Int16, timestamp: UInt64)
-    case moveY(product: String, delta: Int16, timestamp: UInt64)
-    case wheel(product: String, delta: Int16, timestamp: UInt64)
+    var hasToggleModifiers: Bool {
+        !intersection([.leftControl, .rightControl].combined).isEmpty
+            && !intersection([.leftOption, .rightOption].combined).isEmpty
+            && !intersection([.leftCommand, .rightCommand].combined).isEmpty
+    }
 
-    var packetType: PacketType {
-        switch self {
-        case let .key(_, _, isDown, _):
-            return isDown ? .keyDown : .keyUp
-        case .modifier:
-            return .modifier
-        case let .button(_, _, isDown, _):
-            return isDown ? .buttonDown : .buttonUp
-        case .moveX:
-            return .moveX
-        case .moveY:
-            return .moveY
-        case .wheel:
-            return .wheel
+    static func from<S: Sequence>(usages: S) -> ModifierState where S.Element == UInt16 {
+        usages.reduce(into: ModifierState()) { state, usage in
+            guard let modifier = ModifierState(usage: usage) else { return }
+            state.insert(modifier)
         }
     }
+}
+
+extension Array where Element == ModifierState {
+    fileprivate var combined: ModifierState {
+        reduce(into: ModifierState()) { result, state in
+            result.formUnion(state)
+        }
+    }
+}
+
+enum InputEvent: Sendable {
+    case key(product: String, usage: UInt16, isDown: Bool, timestamp: UInt64)
+    case button(product: String, button: UInt8, isDown: Bool, timestamp: UInt64)
+    case pointer(product: String, dx: Int16, dy: Int16, timestamp: UInt64)
+    case wheel(product: String, deltaY: Int16, timestamp: UInt64)
 
     var logDescription: String {
         switch self {
         case let .key(product, usage, isDown, timestamp):
             return "[KBD] product=\(product) usage=\(usage) \(isDown ? "down" : "up") ts=\(timestamp)"
-        case let .modifier(product, state, timestamp):
-            return "[MOD] product=\(product) state=\(state) ts=\(timestamp)"
         case let .button(product, button, isDown, timestamp):
             return "[BTN] product=\(product) button=\(button) \(isDown ? "down" : "up") ts=\(timestamp)"
-        case let .moveX(product, delta, timestamp):
-            return "[PTR] product=\(product) dx=\(delta) ts=\(timestamp)"
-        case let .moveY(product, delta, timestamp):
-            return "[PTR] product=\(product) dy=\(delta) ts=\(timestamp)"
-        case let .wheel(product, delta, timestamp):
-            return "[WHL] product=\(product) wheel=\(delta) ts=\(timestamp)"
+        case let .pointer(product, dx, dy, timestamp):
+            return "[PTR] product=\(product) dx=\(dx) dy=\(dy) ts=\(timestamp)"
+        case let .wheel(product, deltaY, timestamp):
+            return "[WHL] product=\(product) wheel=\(deltaY) ts=\(timestamp)"
         }
+    }
+}
+
+struct RemoteSyncState: Sendable {
+    let modifierMask: UInt8
+    let buttonMask: UInt8
+    let pressedKeys: [UInt16]
+}
+
+enum ToggleChord {
+    static let returnUsage = UInt16(kHIDUsage_KeyboardReturnOrEnter)
+    static let modifierUsages: Set<UInt16> = [
+        UInt16(kHIDUsage_KeyboardLeftControl),
+        UInt16(kHIDUsage_KeyboardRightControl),
+        UInt16(kHIDUsage_KeyboardLeftAlt),
+        UInt16(kHIDUsage_KeyboardRightAlt),
+        UInt16(kHIDUsage_KeyboardLeftGUI),
+        UInt16(kHIDUsage_KeyboardRightGUI)
+    ]
+    static let usages: Set<UInt16> = modifierUsages.union([returnUsage])
+
+    static func isPartOfChord(_ usage: UInt16) -> Bool {
+        usages.contains(usage)
     }
 }

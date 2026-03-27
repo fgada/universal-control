@@ -6,18 +6,25 @@ internal sealed class ReceiverState
 
     private readonly object gate = new();
     private readonly InputInjector injector;
+    private readonly KeyboardRepeatConfiguration keyboardRepeatConfiguration = KeyboardRepeatConfiguration.Load();
     private readonly HashSet<ushort> pressedKeys = [];
     private readonly HashSet<ushort> loggedUnknownUsages = [];
     private readonly HashSet<byte> loggedUnknownButtons = [];
+    private readonly List<ushort> repeatablePressedKeysInOrder = [];
 
     private bool sessionActive;
     private byte modifierMask;
     private byte buttonMask;
     private DateTime lastSyncUtc = DateTime.MinValue;
+    private DateTime nextKeyRepeatUtc = DateTime.MinValue;
+    private ushort? repeatingKeyUsage;
 
     internal ReceiverState(InputInjector injector)
     {
         this.injector = injector;
+        Console.WriteLine(
+            $"Keyboard repeat configured: delay={keyboardRepeatConfiguration.InitialDelay.TotalMilliseconds:0}ms interval={keyboardRepeatConfiguration.Interval.TotalMilliseconds:0.##}ms"
+        );
     }
 
     internal void HandleSession(bool active)
@@ -66,10 +73,7 @@ internal sealed class ReceiverState
                 if (pressedKeys.Add(packet.Usage))
                 {
                     injector.SendKey(mapping, true);
-                }
-                else
-                {
-                    injector.SendKeyRepeat(mapping);
+                    HandlePressedRepeatableKeyLocked(packet.Usage);
                 }
 
                 return;
@@ -78,6 +82,7 @@ internal sealed class ReceiverState
             if (pressedKeys.Remove(packet.Usage))
             {
                 injector.SendKey(mapping, false);
+                HandleReleasedRepeatableKeyLocked(packet.Usage);
             }
         }
     }
@@ -179,6 +184,39 @@ internal sealed class ReceiverState
         }
     }
 
+    internal void CheckForKeyRepeat()
+    {
+        lock (gate)
+        {
+            if (!sessionActive || repeatingKeyUsage is not ushort usage || nextKeyRepeatUtc == DateTime.MinValue)
+            {
+                return;
+            }
+
+            if (!pressedKeys.Contains(usage))
+            {
+                StopKeyRepeatLocked();
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+            if (now < nextKeyRepeatUtc)
+            {
+                return;
+            }
+
+            if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+            {
+                LogUnknownUsageLocked(usage);
+                StopKeyRepeatLocked();
+                return;
+            }
+
+            injector.SendKeyRepeat(mapping);
+            nextKeyRepeatUtc = now + keyboardRepeatConfiguration.Interval;
+        }
+    }
+
     private void SyncKeysLocked(IEnumerable<ushort> desiredUsages)
     {
         var desired = new HashSet<ushort>(desiredUsages);
@@ -192,6 +230,7 @@ internal sealed class ReceiverState
 
             injector.SendKey(mapping, false);
             pressedKeys.Remove(usage);
+            HandleReleasedRepeatableKeyLocked(usage);
         }
 
         foreach (var usage in desired.Except(pressedKeys).ToArray())
@@ -204,6 +243,7 @@ internal sealed class ReceiverState
 
             injector.SendKey(mapping, true);
             pressedKeys.Add(usage);
+            HandlePressedRepeatableKeyLocked(usage);
         }
     }
 
@@ -269,6 +309,9 @@ internal sealed class ReceiverState
 
     private void ReleaseAllLocked()
     {
+        StopKeyRepeatLocked();
+        repeatablePressedKeysInOrder.Clear();
+
         foreach (var usage in pressedKeys.ToArray())
         {
             if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
@@ -302,6 +345,54 @@ internal sealed class ReceiverState
         }
 
         buttonMask = 0;
+    }
+
+    private void HandlePressedRepeatableKeyLocked(ushort usage)
+    {
+        var existingIndex = repeatablePressedKeysInOrder.IndexOf(usage);
+        if (existingIndex >= 0)
+        {
+            repeatablePressedKeysInOrder.RemoveAt(existingIndex);
+        }
+
+        repeatablePressedKeysInOrder.Add(usage);
+        repeatingKeyUsage = usage;
+        nextKeyRepeatUtc = DateTime.UtcNow + keyboardRepeatConfiguration.InitialDelay;
+    }
+
+    private void HandleReleasedRepeatableKeyLocked(ushort usage)
+    {
+        var existingIndex = repeatablePressedKeysInOrder.IndexOf(usage);
+        if (existingIndex >= 0)
+        {
+            repeatablePressedKeysInOrder.RemoveAt(existingIndex);
+        }
+
+        if (repeatingKeyUsage != usage)
+        {
+            return;
+        }
+
+        for (var index = repeatablePressedKeysInOrder.Count - 1; index >= 0; index--)
+        {
+            var fallbackUsage = repeatablePressedKeysInOrder[index];
+            if (!pressedKeys.Contains(fallbackUsage))
+            {
+                continue;
+            }
+
+            repeatingKeyUsage = fallbackUsage;
+            nextKeyRepeatUtc = DateTime.UtcNow + keyboardRepeatConfiguration.InitialDelay;
+            return;
+        }
+
+        StopKeyRepeatLocked();
+    }
+
+    private void StopKeyRepeatLocked()
+    {
+        repeatingKeyUsage = null;
+        nextKeyRepeatUtc = DateTime.MinValue;
     }
 
     private void LogUnknownUsageLocked(ushort usage)

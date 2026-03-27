@@ -142,10 +142,11 @@ internal static class Program
 
     private static async Task RunTimeoutMonitorAsync(ReceiverState receiverState, CancellationToken cancellationToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(50));
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(10));
         while (await timer.WaitForNextTickAsync(cancellationToken))
         {
             receiverState.CheckForSyncTimeout();
+            receiverState.CheckForKeyRepeat();
         }
     }
 }

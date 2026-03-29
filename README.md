@@ -153,7 +153,7 @@ macOS 側は初回実行時に次を許可してください。
 - `5`: wheel
 - `6`: sync
 
-`sync` は 200ms ごとに送られ、Windows 側は 300ms を超えて途切れると stuck key / stuck button を解放します。
+`sync` は 200ms ごとに送られます。Windows 側は 300ms を超えて途切れると stuck key / stuck button を解放し、その後 5 分までは session を維持したまま resync を待ちます。`sync` が戻れば自動復帰し、5 分を超えて戻らなければ session を放棄します。
 
 ## Operational Notes
 

@@ -3,6 +3,7 @@ namespace UniversalControlWindowsReceiver;
 internal sealed class ReceiverState
 {
     private static readonly TimeSpan SyncTimeout = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan SessionIdleTimeout = TimeSpan.FromMinutes(5);
 
     private readonly object gate = new();
     private readonly InputInjector injector;
@@ -18,6 +19,7 @@ internal sealed class ReceiverState
     private DateTime lastSyncUtc = DateTime.MinValue;
     private DateTime nextKeyRepeatUtc = DateTime.MinValue;
     private ushort? repeatingKeyUsage;
+    private bool awaitingResync;
 
     internal ReceiverState(InputInjector injector)
     {
@@ -36,6 +38,7 @@ internal sealed class ReceiverState
                 ReleaseAllLocked();
                 sessionActive = true;
                 lastSyncUtc = DateTime.UtcNow;
+                awaitingResync = false;
                 Console.WriteLine("Remote session active");
                 return;
             }
@@ -43,6 +46,7 @@ internal sealed class ReceiverState
             ReleaseAllLocked();
             sessionActive = false;
             lastSyncUtc = DateTime.MinValue;
+            awaitingResync = false;
             Console.WriteLine("Remote session inactive");
         }
     }
@@ -51,7 +55,7 @@ internal sealed class ReceiverState
     {
         lock (gate)
         {
-            if (!sessionActive)
+            if (!sessionActive || awaitingResync)
             {
                 return;
             }
@@ -91,7 +95,7 @@ internal sealed class ReceiverState
     {
         lock (gate)
         {
-            if (!sessionActive)
+            if (!sessionActive || awaitingResync)
             {
                 return;
             }
@@ -125,7 +129,7 @@ internal sealed class ReceiverState
     {
         lock (gate)
         {
-            if (!sessionActive)
+            if (!sessionActive || awaitingResync)
             {
                 return;
             }
@@ -138,7 +142,7 @@ internal sealed class ReceiverState
     {
         lock (gate)
         {
-            if (!sessionActive)
+            if (!sessionActive || awaitingResync)
             {
                 return;
             }
@@ -156,7 +160,13 @@ internal sealed class ReceiverState
                 return;
             }
 
+            if (awaitingResync)
+            {
+                Console.WriteLine("Sync restored; resuming remote session.");
+            }
+
             lastSyncUtc = DateTime.UtcNow;
+            awaitingResync = false;
             SyncModifiersLocked(packet.ModifierMask);
             SyncButtonsLocked(packet.ButtonMask);
             SyncKeysLocked(packet.PressedKeys);
@@ -172,15 +182,28 @@ internal sealed class ReceiverState
                 return;
             }
 
-            if (DateTime.UtcNow - lastSyncUtc <= SyncTimeout)
+            var elapsed = DateTime.UtcNow - lastSyncUtc;
+            if (elapsed <= SyncTimeout)
             {
                 return;
             }
 
-            Console.Error.WriteLine("Sync timeout; releasing remote input state.");
-            ReleaseAllLocked();
+            if (!awaitingResync)
+            {
+                Console.Error.WriteLine("Sync timeout; releasing remote input state and waiting for resync.");
+                ReleaseAllLocked();
+                awaitingResync = true;
+            }
+
+            if (elapsed <= SessionIdleTimeout)
+            {
+                return;
+            }
+
+            Console.Error.WriteLine("Session idle timeout; abandoning remote session.");
             sessionActive = false;
             lastSyncUtc = DateTime.MinValue;
+            awaitingResync = false;
         }
     }
 

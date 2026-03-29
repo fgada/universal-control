@@ -94,13 +94,16 @@ struct RemoteSyncState: Sendable {
     let modifierMask: UInt8
     let buttonMask: UInt8
     let pressedKeys: [UInt16]
+
+    static let empty = RemoteSyncState(modifierMask: 0, buttonMask: 0, pressedKeys: [])
 }
 
-enum ToggleChord {
-    static let triggerUsage = UInt16(kHIDUsage_KeyboardF19)
-    static let usages: Set<UInt16> = [triggerUsage]
+enum ToggleKey {
+    static let remoteModeUsage = UInt16(kHIDUsage_KeyboardF19)
+    static let jitterModeUsage = UInt16(kHIDUsage_KeyboardF18)
+    static let usages: Set<UInt16> = [remoteModeUsage, jitterModeUsage]
 
-    static func isPartOfChord(_ usage: UInt16) -> Bool {
+    static func isToggleUsage(_ usage: UInt16) -> Bool {
         usages.contains(usage)
     }
 }

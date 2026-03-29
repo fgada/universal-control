@@ -14,6 +14,7 @@ final class RemoteModeController: @unchecked Sendable {
     private let packetEncoder = PacketEncoder()
     private let pointerFlushTimer: DispatchSourceTimer
     private let syncTimer: DispatchSourceTimer
+    private var jitterController: JitterModeController!
 
     private var mode: Mode = .local
     private var physicalPressedKeys: Set<UInt16> = []
@@ -31,6 +32,10 @@ final class RemoteModeController: @unchecked Sendable {
 
         syncTimer = DispatchSource.makeTimerSource(queue: queue)
         syncTimer.schedule(deadline: .now() + .milliseconds(200), repeating: .milliseconds(200))
+
+        jitterController = JitterModeController(queue: queue) { [weak self] dx, dy in
+            self?.enqueuePointerDelta(dx: dx, dy: dy)
+        }
 
         pointerFlushTimer.setEventHandler { [weak self] in
             self?.flushPointerIfNeeded()
@@ -55,8 +60,7 @@ final class RemoteModeController: @unchecked Sendable {
 
             case let .pointer(_, dx, dy, _):
                 guard mode == .remote else { return }
-                pendingPointerDX += Int32(dx)
-                pendingPointerDY += Int32(dy)
+                enqueuePointerDelta(dx: dx, dy: dy)
 
             case let .wheel(_, deltaY, _):
                 guard mode == .remote else { return }
@@ -107,9 +111,12 @@ final class RemoteModeController: @unchecked Sendable {
     private func handleKey(usage: UInt16, isDown: Bool) {
         updatePhysicalKeyState(usage: usage, isDown: isDown)
 
-        if isDown, usage == ToggleChord.triggerUsage {
+        if isDown, usage == ToggleKey.remoteModeUsage {
             toggleSuppressionActive = true
             toggleRemoteMode()
+        } else if isDown, usage == ToggleKey.jitterModeUsage {
+            toggleSuppressionActive = true
+            toggleJitterMode()
         }
 
         defer { clearToggleSuppressionIfNeeded() }
@@ -139,8 +146,7 @@ final class RemoteModeController: @unchecked Sendable {
         let dy = Int16(clamping: event.getIntegerValueField(.mouseEventDeltaY))
         guard dx != 0 || dy != 0 else { return }
 
-        pendingPointerDX += Int32(dx)
-        pendingPointerDY += Int32(dy)
+        enqueuePointerDelta(dx: dx, dy: dy)
     }
 
     private func handleCapturedButton(_ event: CGEvent) {
@@ -185,12 +191,12 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func toggleRemoteMode() {
+        let wasTransportActive = isTransportActive
+
         switch mode {
         case .local:
             mode = .remote
             pendingWheelLinesY = 0
-            sender.send(packetEncoder.session(active: true))
-            sendSync()
             print("Remote mode enabled")
 
         case .remote:
@@ -198,13 +204,21 @@ final class RemoteModeController: @unchecked Sendable {
             pendingPointerDX = 0
             pendingPointerDY = 0
             pendingWheelLinesY = 0
-            sender.send(packetEncoder.session(active: false))
             print("Remote mode disabled")
         }
+
+        updateTransportSession(previouslyActive: wasTransportActive)
+    }
+
+    private func toggleJitterMode() {
+        let wasTransportActive = isTransportActive
+        let isEnabled = jitterController.toggle()
+        print("Jitter mode \(isEnabled ? "enabled" : "disabled")")
+        updateTransportSession(previouslyActive: wasTransportActive)
     }
 
     private func flushPointerIfNeeded() {
-        guard mode == .remote else {
+        guard isTransportActive else {
             pendingPointerDX = 0
             pendingPointerDY = 0
             return
@@ -220,7 +234,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func sendSyncIfNeeded() {
-        guard mode == .remote else { return }
+        guard isTransportActive else { return }
         sendSync()
     }
 
@@ -229,7 +243,9 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func makeSyncState() -> RemoteSyncState {
-        let suppressedToggleUsages = toggleSuppressionActive ? ToggleChord.usages : []
+        guard mode == .remote else { return .empty }
+
+        let suppressedToggleUsages = toggleSuppressionActive ? ToggleKey.usages : []
         let effectivePressedKeys = physicalPressedKeys.subtracting(suppressedToggleUsages)
         let modifierState = ModifierState.from(usages: effectivePressedKeys)
         let pressedKeys = effectivePressedKeys
@@ -247,7 +263,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func shouldSuppressForwarding(for usage: UInt16) -> Bool {
-        toggleSuppressionActive && ToggleChord.isPartOfChord(usage)
+        toggleSuppressionActive && ToggleKey.isToggleUsage(usage)
     }
 
     private func updatePhysicalKeyState(usage: UInt16, isDown: Bool) {
@@ -268,9 +284,40 @@ final class RemoteModeController: @unchecked Sendable {
 
     private func clearToggleSuppressionIfNeeded() {
         guard toggleSuppressionActive else { return }
-        if physicalPressedKeys.isDisjoint(with: ToggleChord.usages) {
+        if physicalPressedKeys.isDisjoint(with: ToggleKey.usages) {
             toggleSuppressionActive = false
         }
+    }
+
+    private var isTransportActive: Bool {
+        mode == .remote || jitterController.isEnabled
+    }
+
+    private func updateTransportSession(previouslyActive: Bool) {
+        let isActive = isTransportActive
+
+        switch (previouslyActive, isActive) {
+        case (false, true):
+            sender.send(packetEncoder.session(active: true))
+            sendSync()
+
+        case (true, true):
+            sendSync()
+
+        case (true, false):
+            pendingPointerDX = 0
+            pendingPointerDY = 0
+            pendingWheelLinesY = 0
+            sender.send(packetEncoder.session(active: false))
+
+        case (false, false):
+            break
+        }
+    }
+
+    private func enqueuePointerDelta(dx: Int16, dy: Int16) {
+        pendingPointerDX += Int32(dx)
+        pendingPointerDY += Int32(dy)
     }
 
     private func buttonMaskBit(for button: UInt8) -> UInt8? {
@@ -289,6 +336,7 @@ final class RemoteModeController: @unchecked Sendable {
 
 private enum ToggleKeyCode {
     static let all: Set<CGKeyCode> = [
+        CGKeyCode(kVK_F18),
         CGKeyCode(kVK_F19)
     ]
 }

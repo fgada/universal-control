@@ -19,6 +19,7 @@ do {
     print("Starting universal-control-minimal")
     print("Sending input to \(options.targetHost):\(options.targetPort)")
     print("Toggle remote mode with F19.")
+    print("Toggle jitter mode with F18.")
     print("Grant Input Monitoring and Accessibility permissions if events are missing or suppression does not work.")
 
     receiver.run()

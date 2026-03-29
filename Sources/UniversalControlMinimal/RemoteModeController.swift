@@ -10,6 +10,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private let sender: UDPEventSender
+    private let keymap: Keymap
     private let queue = DispatchQueue(label: "remote.mode.controller.queue", qos: .userInteractive)
     private let packetEncoder = PacketEncoder()
     private let pointerFlushTimer: DispatchSourceTimer
@@ -24,8 +25,9 @@ final class RemoteModeController: @unchecked Sendable {
     private var pendingWheelLinesY: Double = 0
     private var toggleSuppressionActive = false
 
-    init(sender: UDPEventSender) {
+    init(sender: UDPEventSender, keymap: Keymap) {
         self.sender = sender
+        self.keymap = keymap
 
         pointerFlushTimer = DispatchSource.makeTimerSource(queue: queue)
         pointerFlushTimer.schedule(deadline: .now() + .milliseconds(1), repeating: .milliseconds(1))
@@ -129,7 +131,12 @@ final class RemoteModeController: @unchecked Sendable {
             return
         }
 
-        sender.send(packetEncoder.key(usage: usage, isDown: isDown))
+        if keymap.isIdentity {
+            sender.send(packetEncoder.key(usage: usage, isDown: isDown))
+            return
+        }
+
+        sendSync()
     }
 
     private func handleButton(button: UInt8, isDown: Bool) {
@@ -246,7 +253,11 @@ final class RemoteModeController: @unchecked Sendable {
         guard mode == .remote else { return .empty }
 
         let suppressedToggleUsages = toggleSuppressionActive ? ToggleKey.usages : []
-        let effectivePressedKeys = physicalPressedKeys.subtracting(suppressedToggleUsages)
+        let effectivePressedKeys = Set(
+            physicalPressedKeys
+                .subtracting(suppressedToggleUsages)
+                .map { keymap.map($0) }
+        )
         let modifierState = ModifierState.from(usages: effectivePressedKeys)
         let pressedKeys = effectivePressedKeys
             .filter { ModifierState(usage: $0) == nil }

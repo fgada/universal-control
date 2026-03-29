@@ -1,0 +1,6 @@
+{
+  "mappings": {
+    "left_command": "left_control",
+    "left_control": "left_command"
+  }
+}

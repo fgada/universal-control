@@ -98,12 +98,32 @@ swift run universal-control-minimal --target-host <WINDOWS_IP> --target-port 500
 ```
 
 `--target-port` は省略できます。
+sender は起動ディレクトリの `keymap.json` を自動で読み込みます。ファイルがなければ remap は無効です。
 
 例:
 
 ```bash
 swift run universal-control-minimal --target-host 192.168.1.25
 ```
+
+Command を Ctrl に寄せたい場合の例:
+
+```bash
+swift run universal-control-minimal --target-host 192.168.1.25
+```
+
+`keymap.json`:
+
+```json
+{
+  "mappings": {
+    "left_command": "left_control",
+    "right_command": "right_control"
+  }
+}
+```
+
+キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
 
 ### 3. リモート入力を開始
 

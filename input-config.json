@@ -1,4 +1,5 @@
 {
+  "cursor_sensitivity": 0.8,
   "mappings": {
     "left_command": "left_control",
     "left_control": "left_command"

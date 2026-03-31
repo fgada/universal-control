@@ -10,7 +10,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private let sender: UDPEventSender
-    private let keymap: Keymap
+    private let inputConfiguration: InputConfiguration
     private let queue = DispatchQueue(label: "remote.mode.controller.queue", qos: .userInteractive)
     private let packetEncoder = PacketEncoder()
     private let pointerFlushTimer: DispatchSourceTimer
@@ -22,12 +22,14 @@ final class RemoteModeController: @unchecked Sendable {
     private var physicalPressedButtons: Set<UInt8> = []
     private var pendingPointerDX: Int32 = 0
     private var pendingPointerDY: Int32 = 0
+    private var pointerDXRemainder: Double = 0
+    private var pointerDYRemainder: Double = 0
     private var pendingWheelLinesY: Double = 0
     private var toggleSuppressionActive = false
 
-    init(sender: UDPEventSender, keymap: Keymap) {
+    init(sender: UDPEventSender, inputConfiguration: InputConfiguration) {
         self.sender = sender
-        self.keymap = keymap
+        self.inputConfiguration = inputConfiguration
 
         pointerFlushTimer = DispatchSource.makeTimerSource(queue: queue)
         pointerFlushTimer.schedule(deadline: .now() + .milliseconds(1), repeating: .milliseconds(1))
@@ -131,7 +133,7 @@ final class RemoteModeController: @unchecked Sendable {
             return
         }
 
-        if keymap.isIdentity {
+        if !inputConfiguration.hasKeyMappings {
             sender.send(packetEncoder.key(usage: usage, isDown: isDown))
             return
         }
@@ -204,12 +206,12 @@ final class RemoteModeController: @unchecked Sendable {
         case .local:
             mode = .remote
             pendingWheelLinesY = 0
+            clearPointerState()
             print("Remote mode enabled")
 
         case .remote:
             mode = .local
-            pendingPointerDX = 0
-            pendingPointerDY = 0
+            clearPointerState()
             pendingWheelLinesY = 0
             print("Remote mode disabled")
         }
@@ -226,8 +228,7 @@ final class RemoteModeController: @unchecked Sendable {
 
     private func flushPointerIfNeeded() {
         guard isTransportActive else {
-            pendingPointerDX = 0
-            pendingPointerDY = 0
+            clearPointerState()
             return
         }
 
@@ -256,7 +257,7 @@ final class RemoteModeController: @unchecked Sendable {
         let effectivePressedKeys = Set(
             physicalPressedKeys
                 .subtracting(suppressedToggleUsages)
-                .map { keymap.map($0) }
+                .map { inputConfiguration.map($0) }
         )
         let modifierState = ModifierState.from(usages: effectivePressedKeys)
         let pressedKeys = effectivePressedKeys
@@ -316,8 +317,7 @@ final class RemoteModeController: @unchecked Sendable {
             sendSync()
 
         case (true, false):
-            pendingPointerDX = 0
-            pendingPointerDY = 0
+            clearPointerState()
             pendingWheelLinesY = 0
             sender.send(packetEncoder.session(active: false))
 
@@ -327,8 +327,28 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func enqueuePointerDelta(dx: Int16, dy: Int16) {
-        pendingPointerDX += Int32(dx)
-        pendingPointerDY += Int32(dy)
+        let scaledDelta = scalePointerDelta(dx: dx, dy: dy)
+        pendingPointerDX += scaledDelta.dx
+        pendingPointerDY += scaledDelta.dy
+    }
+
+    private func scalePointerDelta(dx: Int16, dy: Int16) -> (dx: Int32, dy: Int32) {
+        let scaledDX = Double(dx) * inputConfiguration.cursorSensitivity + pointerDXRemainder
+        let scaledDY = Double(dy) * inputConfiguration.cursorSensitivity + pointerDYRemainder
+        let wholeDX = Int32(scaledDX.rounded(.towardZero))
+        let wholeDY = Int32(scaledDY.rounded(.towardZero))
+
+        pointerDXRemainder = scaledDX - Double(wholeDX)
+        pointerDYRemainder = scaledDY - Double(wholeDY)
+
+        return (wholeDX, wholeDY)
+    }
+
+    private func clearPointerState() {
+        pendingPointerDX = 0
+        pendingPointerDY = 0
+        pointerDXRemainder = 0
+        pointerDYRemainder = 0
     }
 
     private func buttonMaskBit(for button: UInt8) -> UInt8? {

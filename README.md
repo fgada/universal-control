@@ -98,7 +98,7 @@ swift run universal-control-minimal --target-host <WINDOWS_IP> --target-port 500
 ```
 
 `--target-port` は省略できます。
-sender は起動ディレクトリの `keymap.json` を自動で読み込みます。ファイルがなければ remap は無効です。
+sender は起動ディレクトリの `input-config.json` を自動で読み込みます。ファイルがなければ remap とカーソル感度変更は無効です。
 
 例:
 
@@ -112,10 +112,11 @@ Command を Ctrl に寄せたい場合の例:
 swift run universal-control-minimal --target-host 192.168.1.25
 ```
 
-`keymap.json`:
+`input-config.json`:
 
 ```json
 {
+  "cursor_sensitivity": 1.1,
   "mappings": {
     "left_command": "left_control",
     "right_command": "right_control"
@@ -124,6 +125,7 @@ swift run universal-control-minimal --target-host 192.168.1.25
 ```
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
+`cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
 
 ### 3. リモート入力を開始
 

@@ -1,34 +1,38 @@
 import Foundation
 
-enum KeymapError: Error, CustomStringConvertible {
+enum InputConfigurationError: Error, CustomStringConvertible {
     case unreadableFile(String, String)
     case invalidFormat(String)
     case invalidUsageToken(String)
     case invalidTargetValue(String)
+    case invalidCursorSensitivity(String)
 
     var description: String {
         switch self {
         case let .unreadableFile(path, reason):
-            return "Failed to read keymap file '\(path)': \(reason)"
+            return "Failed to read input config file '\(path)': \(reason)"
         case let .invalidFormat(reason):
-            return "Invalid keymap file: \(reason)"
+            return "Invalid input config file: \(reason)"
         case let .invalidUsageToken(token):
-            return "Unknown key token in keymap: \(token)"
+            return "Unknown key token in input config: \(token)"
         case let .invalidTargetValue(source):
-            return "Invalid target value for keymap entry '\(source)'."
+            return "Invalid target value for mapping entry '\(source)'."
+        case let .invalidCursorSensitivity(reason):
+            return "Invalid cursor_sensitivity value: \(reason)"
         }
     }
 }
 
-struct Keymap: Sendable {
-    static let defaultFileName = "keymap.json"
-    static let identity = Keymap(overrides: [:], sourcePath: nil)
+struct InputConfiguration: Sendable {
+    static let defaultFileName = "input-config.json"
+    static let `default` = InputConfiguration(overrides: [:], cursorSensitivity: 1.0, sourcePath: nil)
 
     let overrides: [UInt16: UInt16]
+    let cursorSensitivity: Double
     let sourcePath: String?
 
-    var isIdentity: Bool {
-        overrides.isEmpty
+    var hasKeyMappings: Bool {
+        !overrides.isEmpty
     }
 
     func map(_ usage: UInt16) -> UInt16 {
@@ -36,28 +40,36 @@ struct Keymap: Sendable {
     }
 
     func logLines() -> [String] {
-        overrides.keys.sorted().compactMap { sourceUsage in
+        var lines = ["  cursor_sensitivity -> \(formattedCursorSensitivity)"]
+        let mappingLines = overrides.keys.sorted().compactMap { sourceUsage -> String? in
             guard let targetUsage = overrides[sourceUsage] else {
                 return nil
             }
 
             return "  \(HIDUsageToken.displayName(for: sourceUsage)) -> \(HIDUsageToken.displayName(for: targetUsage))"
         }
+
+        lines.append(contentsOf: mappingLines)
+        return lines
     }
 
-    static func loadDefault() throws -> Keymap {
+    static func loadDefault() throws -> InputConfiguration {
         let defaultPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(defaultFileName)
             .path
 
         guard FileManager.default.fileExists(atPath: defaultPath) else {
-            return .identity
+            return .default
         }
 
         return try loadRequired(from: defaultPath)
     }
 
-    private static func loadRequired(from path: String) throws -> Keymap {
+    private var formattedCursorSensitivity: String {
+        String(format: "%.3g", cursorSensitivity)
+    }
+
+    private static func loadRequired(from path: String) throws -> InputConfiguration {
         let expandedPath = (path as NSString).expandingTildeInPath
         let fileURL = URL(fileURLWithPath: expandedPath)
 
@@ -65,28 +77,36 @@ struct Keymap: Sendable {
         do {
             data = try Data(contentsOf: fileURL)
         } catch {
-            throw KeymapError.unreadableFile(expandedPath, error.localizedDescription)
+            throw InputConfigurationError.unreadableFile(expandedPath, error.localizedDescription)
         }
 
         let rawObject: Any
         do {
             rawObject = try JSONSerialization.jsonObject(with: data)
         } catch {
-            throw KeymapError.invalidFormat(error.localizedDescription)
+            throw InputConfigurationError.invalidFormat(error.localizedDescription)
         }
 
         guard let root = rawObject as? [String: Any] else {
-            throw KeymapError.invalidFormat("Top-level JSON must be an object.")
+            throw InputConfigurationError.invalidFormat("Top-level JSON must be an object.")
         }
 
-        guard let mappings = root["mappings"] as? [String: Any] else {
-            throw KeymapError.invalidFormat("Expected a 'mappings' object.")
+        let mappings: [String: Any]
+        if let rawMappings = root["mappings"] {
+            guard let parsedMappings = rawMappings as? [String: Any] else {
+                throw InputConfigurationError.invalidFormat("Expected a 'mappings' object.")
+            }
+            mappings = parsedMappings
+        } else {
+            mappings = [:]
         }
+
+        let cursorSensitivity = try parseCursorSensitivity(from: root)
 
         var overrides: [UInt16: UInt16] = [:]
         for (rawSource, rawTargetValue) in mappings {
             guard let sourceUsage = HIDUsageToken.parse(rawSource) else {
-                throw KeymapError.invalidUsageToken(rawSource)
+                throw InputConfigurationError.invalidUsageToken(rawSource)
             }
 
             let rawTarget: String
@@ -96,11 +116,11 @@ struct Keymap: Sendable {
             case let value as NSNumber:
                 rawTarget = value.stringValue
             default:
-                throw KeymapError.invalidTargetValue(rawSource)
+                throw InputConfigurationError.invalidTargetValue(rawSource)
             }
 
             guard let targetUsage = HIDUsageToken.parse(rawTarget) else {
-                throw KeymapError.invalidUsageToken(rawTarget)
+                throw InputConfigurationError.invalidUsageToken(rawTarget)
             }
 
             guard sourceUsage != targetUsage else {
@@ -110,7 +130,36 @@ struct Keymap: Sendable {
             overrides[sourceUsage] = targetUsage
         }
 
-        return Keymap(overrides: overrides, sourcePath: expandedPath)
+        return InputConfiguration(
+            overrides: overrides,
+            cursorSensitivity: cursorSensitivity,
+            sourcePath: expandedPath
+        )
+    }
+
+    private static func parseCursorSensitivity(from root: [String: Any]) throws -> Double {
+        guard let rawValue = root["cursor_sensitivity"] else {
+            return 1.0
+        }
+
+        let sensitivity: Double
+        switch rawValue {
+        case let value as NSNumber:
+            sensitivity = value.doubleValue
+        case let value as String:
+            guard let parsedValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                throw InputConfigurationError.invalidCursorSensitivity("Expected a number.")
+            }
+            sensitivity = parsedValue
+        default:
+            throw InputConfigurationError.invalidCursorSensitivity("Expected a number.")
+        }
+
+        guard sensitivity.isFinite, sensitivity > 0 else {
+            throw InputConfigurationError.invalidCursorSensitivity("Expected a positive finite number.")
+        }
+
+        return sensitivity
     }
 }
 

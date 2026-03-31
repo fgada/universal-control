@@ -3,9 +3,9 @@ import Foundation
 
 do {
     let options = try CommandLineOptions(arguments: Array(CommandLine.arguments.dropFirst()))
-    let keymap = try Keymap.loadDefault()
+    let inputConfiguration = try InputConfiguration.loadDefault()
     let sender = try UDPEventSender(host: options.targetHost, port: options.targetPort)
-    let remoteModeController = RemoteModeController(sender: sender, keymap: keymap)
+    let remoteModeController = RemoteModeController(sender: sender, inputConfiguration: inputConfiguration)
     let eventTapController = EventTapController(remoteModeController: remoteModeController)
 
     guard eventTapController.start() else {
@@ -19,9 +19,9 @@ do {
 
     print("Starting universal-control-minimal")
     print("Sending input to \(options.targetHost):\(options.targetPort)")
-    if let sourcePath = keymap.sourcePath {
-        print("Loaded keymap from \(sourcePath)")
-        for line in keymap.logLines() {
+    if let sourcePath = inputConfiguration.sourcePath {
+        print("Loaded input configuration from \(sourcePath)")
+        for line in inputConfiguration.logLines() {
             print(line)
         }
     }

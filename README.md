@@ -99,6 +99,7 @@ swift run universal-control-minimal --target-host <WINDOWS_IP> --target-port 500
 
 `--target-port` は省略できます。
 sender は起動ディレクトリの `input-config.json` を自動で読み込みます。ファイルがなければ remap とカーソル感度変更は無効です。
+`F19` でリモートモードを有効にするたびに再読込されます。
 
 例:
 

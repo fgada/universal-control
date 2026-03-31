@@ -10,7 +10,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private let sender: UDPEventSender
-    private let inputConfiguration: InputConfiguration
+    private var inputConfiguration: InputConfiguration
     private let queue = DispatchQueue(label: "remote.mode.controller.queue", qos: .userInteractive)
     private let packetEncoder = PacketEncoder()
     private let pointerFlushTimer: DispatchSourceTimer
@@ -198,6 +198,7 @@ final class RemoteModeController: @unchecked Sendable {
 
         switch mode {
         case .local:
+            reloadInputConfiguration()
             mode = .remote
             pendingWheelLinesY = 0
             clearPointerState()
@@ -211,6 +212,24 @@ final class RemoteModeController: @unchecked Sendable {
         }
 
         updateTransportSession(previouslyActive: wasTransportActive)
+    }
+
+    private func reloadInputConfiguration() {
+        do {
+            inputConfiguration = try InputConfiguration.loadDefault()
+            if let sourcePath = inputConfiguration.sourcePath {
+                print("Reloaded input configuration from \(sourcePath)")
+            } else {
+                print("Reloaded default input configuration")
+            }
+
+            for line in inputConfiguration.logLines() {
+                print(line)
+            }
+        } catch {
+            print("Failed to reload input configuration: \(error)")
+            print("Keeping existing input configuration")
+        }
     }
 
     private func toggleJitterMode() {

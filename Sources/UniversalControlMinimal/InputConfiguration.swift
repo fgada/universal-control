@@ -6,6 +6,7 @@ enum InputConfigurationError: Error, CustomStringConvertible {
     case invalidUsageToken(String)
     case invalidTargetValue(String)
     case invalidCursorSensitivity(String)
+    case invalidScrollSensitivity(String)
 
     var description: String {
         switch self {
@@ -19,16 +20,24 @@ enum InputConfigurationError: Error, CustomStringConvertible {
             return "Invalid target value for mapping entry '\(source)'."
         case let .invalidCursorSensitivity(reason):
             return "Invalid cursor_sensitivity value: \(reason)"
+        case let .invalidScrollSensitivity(reason):
+            return "Invalid scroll_sensitivity value: \(reason)"
         }
     }
 }
 
 struct InputConfiguration: Sendable {
     static let defaultFileName = "input-config.json"
-    static let `default` = InputConfiguration(overrides: [:], cursorSensitivity: 1.0, sourcePath: nil)
+    static let `default` = InputConfiguration(
+        overrides: [:],
+        cursorSensitivity: 1.0,
+        scrollSensitivity: 1.0,
+        sourcePath: nil
+    )
 
     let overrides: [UInt16: UInt16]
     let cursorSensitivity: Double
+    let scrollSensitivity: Double
     let sourcePath: String?
 
     var hasKeyMappings: Bool {
@@ -40,7 +49,10 @@ struct InputConfiguration: Sendable {
     }
 
     func logLines() -> [String] {
-        var lines = ["  cursor_sensitivity -> \(formattedCursorSensitivity)"]
+        var lines = [
+            "  cursor_sensitivity -> \(formattedCursorSensitivity)",
+            "  scroll_sensitivity -> \(formattedScrollSensitivity)"
+        ]
         let mappingLines = overrides.keys.sorted().compactMap { sourceUsage -> String? in
             guard let targetUsage = overrides[sourceUsage] else {
                 return nil
@@ -67,6 +79,10 @@ struct InputConfiguration: Sendable {
 
     private var formattedCursorSensitivity: String {
         String(format: "%.3g", cursorSensitivity)
+    }
+
+    private var formattedScrollSensitivity: String {
+        String(format: "%.3g", scrollSensitivity)
     }
 
     private static func loadRequired(from path: String) throws -> InputConfiguration {
@@ -101,7 +117,16 @@ struct InputConfiguration: Sendable {
             mappings = [:]
         }
 
-        let cursorSensitivity = try parseCursorSensitivity(from: root)
+        let cursorSensitivity = try parseSensitivity(
+            from: root,
+            key: "cursor_sensitivity",
+            errorFactory: InputConfigurationError.invalidCursorSensitivity
+        )
+        let scrollSensitivity = try parseSensitivity(
+            from: root,
+            key: "scroll_sensitivity",
+            errorFactory: InputConfigurationError.invalidScrollSensitivity
+        )
 
         var overrides: [UInt16: UInt16] = [:]
         for (rawSource, rawTargetValue) in mappings {
@@ -133,12 +158,17 @@ struct InputConfiguration: Sendable {
         return InputConfiguration(
             overrides: overrides,
             cursorSensitivity: cursorSensitivity,
+            scrollSensitivity: scrollSensitivity,
             sourcePath: expandedPath
         )
     }
 
-    private static func parseCursorSensitivity(from root: [String: Any]) throws -> Double {
-        guard let rawValue = root["cursor_sensitivity"] else {
+    private static func parseSensitivity(
+        from root: [String: Any],
+        key: String,
+        errorFactory: (String) -> InputConfigurationError
+    ) throws -> Double {
+        guard let rawValue = root[key] else {
             return 1.0
         }
 
@@ -148,15 +178,15 @@ struct InputConfiguration: Sendable {
             sensitivity = value.doubleValue
         case let value as String:
             guard let parsedValue = Double(value.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-                throw InputConfigurationError.invalidCursorSensitivity("Expected a number.")
+                throw errorFactory("Expected a number.")
             }
             sensitivity = parsedValue
         default:
-            throw InputConfigurationError.invalidCursorSensitivity("Expected a number.")
+            throw errorFactory("Expected a number.")
         }
 
         guard sensitivity.isFinite, sensitivity > 0 else {
-            throw InputConfigurationError.invalidCursorSensitivity("Expected a positive finite number.")
+            throw errorFactory("Expected a positive finite number.")
         }
 
         return sensitivity

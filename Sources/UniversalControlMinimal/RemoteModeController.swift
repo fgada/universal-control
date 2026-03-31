@@ -68,7 +68,7 @@ final class RemoteModeController: @unchecked Sendable {
 
             case let .wheel(_, deltaY, _):
                 guard mode == .remote else { return }
-                sender.send(packetEncoder.wheel(deltaY: deltaY))
+                sendScaledWheel(deltaY: Double(deltaY))
             }
         }
     }
@@ -177,26 +177,20 @@ final class RemoteModeController: @unchecked Sendable {
     private func handleCapturedScroll(_ event: CGEvent) {
         guard mode == .remote else { return }
 
-        let deltaY = normalizedScrollLines(from: event)
+        let deltaY = rawScrollLines(from: event)
         guard deltaY != 0 else { return }
 
-        sender.send(packetEncoder.wheel(deltaY: deltaY))
+        sendScaledWheel(deltaY: deltaY)
     }
 
-    private func normalizedScrollLines(from event: CGEvent) -> Int16 {
+    private func rawScrollLines(from event: CGEvent) -> Double {
         let discreteLines = Int(event.getIntegerValueField(.scrollWheelEventDeltaAxis1))
         if discreteLines != 0 {
-            pendingWheelLinesY = 0
-            return Int16(clamping: discreteLines)
+            return Double(discreteLines)
         }
 
         let fixedPointLines = Double(event.getIntegerValueField(.scrollWheelEventFixedPtDeltaAxis1)) / 65536.0
-        guard fixedPointLines != 0 else { return 0 }
-
-        pendingWheelLinesY += fixedPointLines
-        let wholeLines = Int(pendingWheelLinesY.rounded(.towardZero))
-        pendingWheelLinesY -= Double(wholeLines)
-        return Int16(clamping: wholeLines)
+        return fixedPointLines
     }
 
     private func toggleRemoteMode() {
@@ -330,6 +324,15 @@ final class RemoteModeController: @unchecked Sendable {
         let scaledDelta = scalePointerDelta(dx: dx, dy: dy)
         pendingPointerDX += scaledDelta.dx
         pendingPointerDY += scaledDelta.dy
+    }
+
+    private func sendScaledWheel(deltaY: Double) {
+        let scaledDeltaY = deltaY * inputConfiguration.scrollSensitivity + pendingWheelLinesY
+        let linesToSend = Int16(clamping: Int(scaledDeltaY.rounded(.towardZero)))
+        pendingWheelLinesY = scaledDeltaY - Double(linesToSend)
+
+        guard linesToSend != 0 else { return }
+        sender.send(packetEncoder.wheel(deltaY: linesToSend))
     }
 
     private func scalePointerDelta(dx: Int16, dy: Int16) -> (dx: Int32, dy: Int32) {

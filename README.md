@@ -117,6 +117,7 @@ swift run universal-control-minimal --target-host 192.168.1.25
 ```json
 {
   "cursor_sensitivity": 1.1,
+  "scroll_sensitivity": 0.9,
   "mappings": {
     "left_command": "left_control",
     "right_command": "right_control"
@@ -126,6 +127,7 @@ swift run universal-control-minimal --target-host 192.168.1.25
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
 `cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
+`scroll_sensitivity` の既定値も `1.0` で、`1.1` で多く、`0.9` で少なくスクロールします。
 
 ### 3. リモート入力を開始
 

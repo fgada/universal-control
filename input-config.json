@@ -2,6 +2,7 @@
   "cursor_sensitivity": 0.8,
   "scroll_sensitivity": 0.6,
   "mappings": {
+    "globe": "henkan",
     "left_command": "left_control",
     "left_control": "left_command"
   }

@@ -2,6 +2,9 @@ import Foundation
 import IOKit.hid
 
 final class HIDInputReceiver: @unchecked Sendable {
+    private static let appleVendorTopCaseUsagePage: UInt32 = 0x00FF
+    private static let appleKeyboardFnUsage: UInt32 = 0x0003
+
     private let eventSink: @Sendable (InputEvent) -> Void
     private let queue = DispatchQueue(label: "hid.receiver.queue", qos: .userInteractive)
 
@@ -91,12 +94,18 @@ final class HIDInputReceiver: @unchecked Sendable {
         let timestamp = IOHIDValueGetTimeStamp(value)
         let product = stringProperty(kIOHIDProductKey, device: device) ?? "Unknown"
 
-        guard usagePage == UInt32(kHIDPage_KeyboardOrKeypad) else {
+        let usage = IOHIDElementGetUsage(element)
+        switch usagePage {
+        case UInt32(kHIDPage_KeyboardOrKeypad):
+            handleKeyboard(product: product, usage: usage, value: intValue, timestamp: timestamp)
+
+        // Apple keyboards expose the Globe/Fn key on the vendor top-case page.
+        case Self.appleVendorTopCaseUsagePage where usage == Self.appleKeyboardFnUsage:
+            handleKeyboard(product: product, usage: UInt32(SyntheticUsage.globe), value: intValue, timestamp: timestamp)
+
+        default:
             return
         }
-
-        let usage = IOHIDElementGetUsage(element)
-        handleKeyboard(product: product, usage: usage, value: intValue, timestamp: timestamp)
     }
 
     private func handleKeyboard(product: String, usage: UInt32, value: CFIndex, timestamp: UInt64) {

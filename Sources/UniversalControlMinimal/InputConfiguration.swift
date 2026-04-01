@@ -267,6 +267,7 @@ private enum HIDUsageToken {
         register(0x63, ["keypad_period", "kp_period", "kp_dot"])
         register(0x64, ["non_us_backslash", "nonusbackslash"])
         register(0x65, ["application", "menu"])
+        register(SyntheticUsage.globe, ["globe", "fn", "earth", "earth_key", "地球儀"])
         register(0x8A, ["henkan", "convert", "ime_convert", "international4", "変換"])
         register(0x8B, ["muhenkan", "nonconvert", "non_convert", "ime_nonconvert", "international5", "無変換"])
 
@@ -313,6 +314,7 @@ private enum HIDUsageToken {
         0xE5: "right_shift",
         0xE6: "right_option",
         0xE7: "right_command",
+        SyntheticUsage.globe: "globe",
         0x8A: "henkan",
         0x8B: "muhenkan"
     ]

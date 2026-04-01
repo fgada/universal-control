@@ -98,6 +98,10 @@ struct RemoteSyncState: Sendable {
     static let empty = RemoteSyncState(modifierMask: 0, buttonMask: 0, pressedKeys: [])
 }
 
+enum SyntheticUsage {
+    static let globe = UInt16(0xFF03)
+}
+
 enum ToggleKey {
     static let remoteModeUsage = UInt16(kHIDUsage_KeyboardF19)
     static let jitterModeUsage = UInt16(kHIDUsage_KeyboardF18)

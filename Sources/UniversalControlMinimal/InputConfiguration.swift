@@ -267,6 +267,8 @@ private enum HIDUsageToken {
         register(0x63, ["keypad_period", "kp_period", "kp_dot"])
         register(0x64, ["non_us_backslash", "nonusbackslash"])
         register(0x65, ["application", "menu"])
+        register(0x8A, ["henkan", "convert", "ime_convert", "international4", "変換"])
+        register(0x8B, ["muhenkan", "nonconvert", "non_convert", "ime_nonconvert", "international5", "無変換"])
 
         for functionKey in 1...12 {
             register(UInt16(0x39 + functionKey), ["f\(functionKey)"])
@@ -310,7 +312,9 @@ private enum HIDUsageToken {
         0xE4: "right_control",
         0xE5: "right_shift",
         0xE6: "right_option",
-        0xE7: "right_command"
+        0xE7: "right_command",
+        0x8A: "henkan",
+        0x8B: "muhenkan"
     ]
 
     static func parse(_ rawValue: String) -> UInt16? {

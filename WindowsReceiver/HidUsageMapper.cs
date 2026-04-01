@@ -1,10 +1,10 @@
 namespace UniversalControlWindowsReceiver;
 
-internal readonly record struct ScanCodeMapping(ushort ScanCode, bool Extended);
+internal readonly record struct KeyboardMapping(ushort Code, bool Extended, bool UsesVirtualKey = false);
 
 internal static class HidUsageMapper
 {
-    private static readonly Dictionary<ushort, ScanCodeMapping> ScanCodes = new()
+    private static readonly Dictionary<ushort, KeyboardMapping> KeyMappings = new()
     {
         [0x04] = new(0x1E, false),
         [0x05] = new(0x30, false),
@@ -102,6 +102,8 @@ internal static class HidUsageMapper
         [0x63] = new(0x53, false),
         [0x64] = new(0x56, false),
         [0x65] = new(0x5D, true),
+        [0x8A] = new(0x1C, false, true),
+        [0x8B] = new(0x1D, false, true),
         [0xE0] = new(0x1D, false),
         [0xE1] = new(0x2A, false),
         [0xE2] = new(0x38, false),
@@ -124,8 +126,8 @@ internal static class HidUsageMapper
         0xE7
     };
 
-    internal static bool TryGetScanCode(ushort usage, out ScanCodeMapping mapping)
-        => ScanCodes.TryGetValue(usage, out mapping);
+    internal static bool TryGetKeyboardMapping(ushort usage, out KeyboardMapping mapping)
+        => KeyMappings.TryGetValue(usage, out mapping);
 
     internal static bool TryGetModifierBit(ushort usage, out int bit)
     {

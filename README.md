@@ -127,6 +127,7 @@ swift run universal-control-minimal --target-host 192.168.1.25
 ```
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
+日本語キーボード系の `henkan` / `muhenkan` も指定できます。
 `cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
 `scroll_sensitivity` の既定値も `1.0` で、`1.1` で多く、`0.9` で少なくスクロールします。
 

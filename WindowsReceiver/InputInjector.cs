@@ -20,12 +20,12 @@ internal sealed class InputInjector
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventScanCode = 0x0008;
 
-    internal void SendKey(ScanCodeMapping mapping, bool isDown)
+    internal void SendKey(KeyboardMapping mapping, bool isDown)
     {
         Send("keyboard", CreateKeyboardInput(mapping, isDown));
     }
 
-    internal void SendKeyRepeat(ScanCodeMapping mapping)
+    internal void SendKeyRepeat(KeyboardMapping mapping)
     {
         // SendInput can drop the repeated character effect when release/press is
         // submitted as one batch, so emit them as distinct keyboard events.
@@ -126,10 +126,10 @@ internal sealed class InputInjector
         Send("button", input);
     }
 
-    private static INPUT CreateKeyboardInput(ScanCodeMapping mapping, bool isDown)
+    private static INPUT CreateKeyboardInput(KeyboardMapping mapping, bool isDown)
     {
-        var flags = KeyEventScanCode;
-        if (mapping.Extended)
+        var flags = mapping.UsesVirtualKey ? 0u : KeyEventScanCode;
+        if (!mapping.UsesVirtualKey && mapping.Extended)
         {
             flags |= KeyEventExtendedKey;
         }
@@ -146,8 +146,8 @@ internal sealed class InputInjector
             {
                 ki = new KEYBDINPUT
                 {
-                    wVk = 0,
-                    wScan = mapping.ScanCode,
+                    wVk = mapping.UsesVirtualKey ? mapping.Code : (ushort)0,
+                    wScan = mapping.UsesVirtualKey ? (ushort)0 : mapping.Code,
                     dwFlags = flags,
                     time = 0,
                     dwExtraInfo = IntPtr.Zero

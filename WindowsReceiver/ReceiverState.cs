@@ -66,7 +66,7 @@ internal sealed class ReceiverState
                 return;
             }
 
-            if (!HidUsageMapper.TryGetScanCode(packet.Usage, out var mapping))
+            if (!HidUsageMapper.TryGetKeyboardMapping(packet.Usage, out var mapping))
             {
                 LogUnknownUsageLocked(packet.Usage);
                 return;
@@ -228,7 +228,7 @@ internal sealed class ReceiverState
                 return;
             }
 
-            if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+            if (!HidUsageMapper.TryGetKeyboardMapping(usage, out var mapping))
             {
                 LogUnknownUsageLocked(usage);
                 StopKeyRepeatLocked();
@@ -246,7 +246,7 @@ internal sealed class ReceiverState
 
         foreach (var usage in pressedKeys.Except(desired).ToArray())
         {
-            if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+            if (!HidUsageMapper.TryGetKeyboardMapping(usage, out var mapping))
             {
                 continue;
             }
@@ -258,7 +258,7 @@ internal sealed class ReceiverState
 
         foreach (var usage in desired.Except(pressedKeys).ToArray())
         {
-            if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+            if (!HidUsageMapper.TryGetKeyboardMapping(usage, out var mapping))
             {
                 LogUnknownUsageLocked(usage);
                 continue;
@@ -313,7 +313,7 @@ internal sealed class ReceiverState
         }
 
         var usage = HidUsageMapper.ModifierUsageForBit(bit);
-        if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+        if (!HidUsageMapper.TryGetKeyboardMapping(usage, out var mapping))
         {
             LogUnknownUsageLocked(usage);
             return;
@@ -337,7 +337,7 @@ internal sealed class ReceiverState
 
         foreach (var usage in pressedKeys.ToArray())
         {
-            if (!HidUsageMapper.TryGetScanCode(usage, out var mapping))
+            if (!HidUsageMapper.TryGetKeyboardMapping(usage, out var mapping))
             {
                 continue;
             }

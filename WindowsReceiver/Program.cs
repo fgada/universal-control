@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
 namespace UniversalControlWindowsReceiver;
@@ -34,6 +36,7 @@ internal static class Program
         var injector = new InputInjector();
         var receiverState = new ReceiverState(injector);
 
+        PrintLocalIPv4Addresses(options.ListenPort);
         Console.WriteLine($"Listening for remote input on UDP {options.ListenPort}");
         var timeoutTask = RunTimeoutMonitorAsync(receiverState, cancellationSource.Token);
 
@@ -149,4 +152,40 @@ internal static class Program
             receiverState.CheckForKeyRepeat();
         }
     }
+
+    private static void PrintLocalIPv4Addresses(int listenPort)
+    {
+        var addresses = GetLocalIPv4Addresses();
+        if (addresses.Count == 0)
+        {
+            Console.WriteLine("No non-loopback IPv4 address found.");
+            return;
+        }
+
+        Console.WriteLine("Local IPv4 addresses:");
+        foreach (var address in addresses)
+        {
+            Console.WriteLine($"  {address.Address} ({address.InterfaceName})");
+        }
+
+        Console.WriteLine($"Use one from macOS with --target-host <IP> --target-port {listenPort}");
+    }
+
+    private static IReadOnlyList<LocalIPv4Address> GetLocalIPv4Addresses()
+    {
+        return NetworkInterface.GetAllNetworkInterfaces()
+            .Where(networkInterface => networkInterface.OperationalStatus == OperationalStatus.Up)
+            .Where(networkInterface => networkInterface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(networkInterface => networkInterface.GetIPProperties().UnicastAddresses
+                .Where(address => address.Address.AddressFamily == AddressFamily.InterNetwork)
+                .Where(address => !IPAddress.IsLoopback(address.Address))
+                .Select(address => new LocalIPv4Address(
+                    address.Address,
+                    networkInterface.Name)))
+            .OrderBy(address => address.InterfaceName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(address => address.Address.ToString(), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private sealed record LocalIPv4Address(IPAddress Address, string InterfaceName);
 }

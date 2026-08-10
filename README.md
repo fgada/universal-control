@@ -1,12 +1,12 @@
 # Universal Control Minimal
 
-macOS の入力を UDP で Windows へ転送する、最小構成の Universal Control 風プロトタイプです。
+macOSの入力をUDPでWindows / Ubuntuへ転送する、最小構成のUniversal Control風プロトタイプです。
 
 - macOS 側は Swift CLI
-- Windows 側は .NET 8 CLI
+- Windows側は.NET 8 CLI、Ubuntu側はC11
 - 同一 LAN の 1 対 1 接続前提
 - 手動トグルでリモート入力を開始 / 停止
-- `F18` で人が微調整したようなジッター移動を Windows 側へ送信
+- `F18`で人が微調整したようなジッター移動をreceiver側へ送信
 - リモート配信中は macOS ローカル入力を suppress
 
 ## What It Does
@@ -14,7 +14,7 @@ macOS の入力を UDP で Windows へ転送する、最小構成の Universal C
 対応している入力は次のとおりです。
 
 - キーボード
-- Windows 側の key repeat
+- receiver側のkey repeat
 - modifier key
 - 相対ポインタ移動
 - 左 / 右 / 中クリック
@@ -37,18 +37,20 @@ v1 では次は未対応です。
   macOS sender
 - `WindowsReceiver/`
   Windows receiver
+- `LinuxReceiver/`
+  Ubuntu/Linux receiver written in C
 
 ## How It Works
 
 macOS 側はキーボードを `IOHIDManager` で受け、押下状態を UDP で送ります。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
-Windows 側は UDP を受信して `SendInput` で注入し、押下中キーは Windows の設定に合わせて key repeat します。
+receiverはUDPを受信し、Windowsでは`SendInput`、Ubuntuでは`uinput`で注入します。押下中キーはreceiver側でも追跡し、key repeatします。
 
 トグルキーは次です。
 
 - `F18`: ジッターモード
 - `F19`
 
-`F18` はリモートモードと独立して動作し、ON 中は Windows 側へ小さな相対ポインタ移動だけを送り続けます。  
+`F18`はリモートモードと独立して動作し、ON中はreceiver側へ小さな相対ポインタ移動だけを送り続けます。
 `F19` は通常のリモート入力モードです。トグルキー自体はリモートにもローカルにも流さない設計です。
 
 ## Requirements
@@ -64,6 +66,13 @@ Windows 側は UDP を受信して `SendInput` で注入し、押下中キーは
 
 - Windows 10 / 11
 - .NET 8 SDK
+
+### Ubuntu
+
+- Ubuntu 22.04以降（Ubuntu 26.04を含む）
+- C11 compiler
+- Linux `uinput` headers
+- `/dev/uinput`への書き込み権限
 
 ## Build
 
@@ -81,12 +90,40 @@ Windows で実行します。
 dotnet build .\WindowsReceiver\UniversalControlWindowsReceiver.csproj
 ```
 
+### Ubuntu receiver
+
+外部ライブラリは使用しません。C標準ライブラリ、POSIX API、Linux標準ヘッダーだけでビルドします。
+
+```bash
+make -C LinuxReceiver
+```
+
+
 ## Run
 
-### 1. Windows receiver を起動
+### 1. receiverを起動
+
+Windows:
 
 ```powershell
 dotnet run --project .\WindowsReceiver\UniversalControlWindowsReceiver.csproj -- --listen-port 50001
+```
+
+Ubuntu:
+
+```bash
+sudo modprobe uinput # 再起動時のみ
+./LinuxReceiver/universal-control-receiver --listen-port 50001
+```
+
+`/dev/uinput`を開けない場合は、Ubuntu側でモジュールと権限を設定してください。設定後は再ログインが必要です。
+
+```bash
+sudo modprobe uinput
+echo 'KERNEL=="uinput", GROUP=="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo usermod -aG input "$USER"
+sudo udevadm control --reload-rules
+sudo udevadm trigger
 ```
 
 省略時の既定ポートは `50001` です。
@@ -150,7 +187,7 @@ F18
 ```
 
 再度 `F18` を押すと停止します。  
-ジッターモードは `F19` のリモートモードと独立しており、`F19` が OFF でも Windows 側にはジッター移動だけを送り続けます。
+ジッターモードは`F19`のリモートモードと独立しており、`F19`がOFFでもreceiver側にはジッター移動だけを送り続けます。
 
 ## Permissions
 
@@ -179,7 +216,7 @@ macOS 側は初回実行時に次を許可してください。
 - `5`: wheel
 - `6`: sync
 
-`sync` は 200ms ごとに送られます。Windows 側は 300ms を超えて途切れると stuck key / stuck button を解放し、その後 5 分までは session を維持したまま resync を待ちます。`sync` が戻れば自動復帰し、5 分を超えて戻らなければ session を放棄します。
+`sync`は200msごとに送られます。receiver側は300msを超えて途切れるとstuck key / stuck buttonを解放し、その後5分まではsessionを維持したままresyncを待ちます。`sync`が戻れば自動復帰し、5分を超えて戻らなければsessionを放棄します。
 
 ## Operational Notes
 
@@ -188,12 +225,13 @@ macOS 側は初回実行時に次を許可してください。
 - ポインタ移動だけ 1ms 単位で coalescing します。
 - キー、ボタン、ホイールは即時送信します。
 - Windows 側は標準権限アプリ向けです。
+- Ubuntu receiverは外部ライブラリに依存せず、入力注入にカーネルの`uinput`を使用します。
 
 ## Known Limitations
 
 - `SendInput` は UIPI 制約を受けるため、管理者権限アプリや UAC 画面では効かないことがあります。
 - macOS の HID 検出と event tap のタイミング差で、`F18` / `F19` の key down がローカルに一瞬見える可能性があります。
-- 未対応 HID usage は Windows 側でログして無視します。
+- 未対応HID usageはreceiver側でログして無視します。
 - 通信は平文 UDP で、認証も暗号化もありません。
 
 ## Troubleshooting
@@ -213,6 +251,12 @@ macOS 側は初回実行時に次を許可してください。
 - Windows Firewall で UDP `50001` を許可してください。
 - sender の `--target-host` が Windows の IP になっているか確認してください。
 - receiver を通常権限アプリ上で試してください。
+
+### Ubuntu で入力されない
+
+- `ls -l /dev/uinput`でデバイスと権限を確認してください。
+- `id`で現在のログインセッションに`input`グループが反映されているか確認してください。
+- firewallを使用している場合はUDP `50001`を許可してください。
 
 ## Next Steps
 

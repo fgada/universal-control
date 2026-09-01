@@ -1,0 +1,127 @@
+import ApplicationServices
+import Foundation
+
+final class InputInjector {
+    private let eventSource = CGEventSource(stateID: .hidSystemState)
+
+    func sendKey(_ mapping: MacKeyMapping, isDown: Bool, modifierMask: UInt8) {
+        guard let event = CGEvent(
+            keyboardEventSource: eventSource,
+            virtualKey: mapping.keyCode,
+            keyDown: isDown
+        ) else {
+            fputs("Failed to create keyboard event.\n", stderr)
+            return
+        }
+
+        event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: isDown)
+        event.post(tap: .cghidEventTap)
+    }
+
+    func sendKeyRepeat(_ mapping: MacKeyMapping, modifierMask: UInt8) {
+        guard let event = CGEvent(
+            keyboardEventSource: eventSource,
+            virtualKey: mapping.keyCode,
+            keyDown: true
+        ) else {
+            fputs("Failed to create keyboard repeat event.\n", stderr)
+            return
+        }
+
+        event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: true)
+        event.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        event.post(tap: .cghidEventTap)
+    }
+
+    func sendRelativePointer(dx: Int16, dy: Int16, buttonMask: UInt8, modifierMask: UInt8) {
+        guard dx != 0 || dy != 0 else { return }
+
+        let currentLocation = CGEvent(source: eventSource)?.location ?? .zero
+        let targetLocation = CGPoint(
+            x: currentLocation.x + CGFloat(dx),
+            y: currentLocation.y + CGFloat(dy)
+        )
+        let drag = dragEvent(for: buttonMask)
+        guard let event = CGEvent(
+            mouseEventSource: eventSource,
+            mouseType: drag.type,
+            mouseCursorPosition: targetLocation,
+            mouseButton: drag.button
+        ) else {
+            fputs("Failed to create pointer event.\n", stderr)
+            return
+        }
+
+        event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
+        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(dx))
+        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(dy))
+        event.post(tap: .cghidEventTap)
+    }
+
+    func sendButton(_ button: UInt8, isDown: Bool, modifierMask: UInt8) {
+        guard let mapping = mouseButtonMapping(button: button, isDown: isDown) else { return }
+
+        let currentLocation = CGEvent(source: eventSource)?.location ?? .zero
+        guard let event = CGEvent(
+            mouseEventSource: eventSource,
+            mouseType: mapping.type,
+            mouseCursorPosition: currentLocation,
+            mouseButton: mapping.button
+        ) else {
+            fputs("Failed to create mouse button event.\n", stderr)
+            return
+        }
+
+        event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
+        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.post(tap: .cghidEventTap)
+    }
+
+    func sendWheel(deltaY: Int16, modifierMask: UInt8) {
+        guard deltaY != 0 else { return }
+        guard let event = CGEvent(
+            scrollWheelEvent2Source: eventSource,
+            units: .line,
+            wheelCount: 1,
+            wheel1: Int32(deltaY),
+            wheel2: 0,
+            wheel3: 0
+        ) else {
+            fputs("Failed to create scroll event.\n", stderr)
+            return
+        }
+
+        event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
+        event.post(tap: .cghidEventTap)
+    }
+
+    private func flags(modifierMask: UInt8, mapping: MacKeyMapping, isDown: Bool) -> CGEventFlags {
+        var eventFlags = HIDUsageMapper.eventFlags(for: modifierMask)
+        if mapping.addsFunctionFlag, isDown {
+            eventFlags.insert(.maskSecondaryFn)
+        }
+        return eventFlags
+    }
+
+    private func dragEvent(for buttonMask: UInt8) -> (type: CGEventType, button: CGMouseButton) {
+        if buttonMask & 0b001 != 0 { return (.leftMouseDragged, .left) }
+        if buttonMask & 0b010 != 0 { return (.rightMouseDragged, .right) }
+        if buttonMask & 0b100 != 0 { return (.otherMouseDragged, .center) }
+        return (.mouseMoved, .left)
+    }
+
+    private func mouseButtonMapping(
+        button: UInt8,
+        isDown: Bool
+    ) -> (type: CGEventType, button: CGMouseButton)? {
+        switch (button, isDown) {
+        case (1, true): (.leftMouseDown, .left)
+        case (1, false): (.leftMouseUp, .left)
+        case (2, true): (.rightMouseDown, .right)
+        case (2, false): (.rightMouseUp, .right)
+        case (3, true): (.otherMouseDown, .center)
+        case (3, false): (.otherMouseUp, .center)
+        default: nil
+        }
+    }
+}

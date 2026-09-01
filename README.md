@@ -1,9 +1,9 @@
 # Universal Control Minimal
 
-macOSの入力をUDPでWindows / Ubuntuへ転送する、最小構成のUniversal Control風プロトタイプです。
+macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成のUniversal Control風プロトタイプです。
 
-- macOS 側は Swift CLI
-- Windows側は.NET 8 CLI、Ubuntu側はC11
+- macOS sender / receiverはSwift CLI
+- Windows receiverは.NET 8 CLI、Ubuntu receiverはC11
 - 同一 LAN の 1 対 1 接続前提
 - 手動トグルでリモート入力を開始 / 停止
 - `F18`で人が微調整したようなジッター移動をreceiver側へ送信
@@ -35,6 +35,8 @@ v1 では次は未対応です。
 
 - `Sources/UniversalControlMinimal/`
   macOS sender
+- `Sources/UniversalControlMacReceiver/`
+  macOS receiver
 - `WindowsReceiver/`
   Windows receiver
 - `LinuxReceiver/`
@@ -43,7 +45,7 @@ v1 では次は未対応です。
 ## How It Works
 
 macOS 側はキーボードを `IOHIDManager` で受け、押下状態を UDP で送ります。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
-receiverはUDPを受信し、Windowsでは`SendInput`、Ubuntuでは`uinput`で注入します。押下中キーはreceiver側でも追跡し、key repeatします。
+receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、Ubuntuでは`uinput`で注入します。押下中キーはreceiver側でも追跡し、key repeatします。
 
 トグルキーは次です。
 
@@ -59,8 +61,8 @@ receiverはUDPを受信し、Windowsでは`SendInput`、Ubuntuでは`uinput`で�
 
 - macOS 13 以降
 - Swift 6 toolchain
-- `Input Monitoring` 権限
-- `Accessibility` 権限
+- sender: `Input Monitoring`と`Accessibility`権限
+- receiver: `Accessibility`権限
 
 ### Windows
 
@@ -76,7 +78,7 @@ receiverはUDPを受信し、Windowsでは`SendInput`、Ubuntuでは`uinput`で�
 
 ## Build
 
-### macOS sender
+### macOS sender / receiver
 
 ```bash
 swift build
@@ -107,6 +109,12 @@ Windows:
 
 ```powershell
 dotnet run --project .\WindowsReceiver\UniversalControlWindowsReceiver.csproj -- --listen-port 50001
+```
+
+macOS:
+
+```bash
+swift run universal-control-mac-receiver --listen-port 50001
 ```
 
 Ubuntu:
@@ -191,12 +199,16 @@ F18
 
 ## Permissions
 
-macOS 側は初回実行時に次を許可してください。
+macOS senderは初回実行時に次を許可してください。
 
 - `System Settings > Privacy & Security > Input Monitoring`
 - `System Settings > Privacy & Security > Accessibility`
 
 権限がないと、入力取得やローカル suppress が正しく動きません。
+
+macOS receiverは入力注入のため、次を許可してください。未許可で起動すると設定画面への許可要求を表示します。
+
+- `System Settings > Privacy & Security > Accessibility`
 
 ## Protocol
 
@@ -230,6 +242,7 @@ macOS 側は初回実行時に次を許可してください。
 ## Known Limitations
 
 - `SendInput` は UIPI 制約を受けるため、管理者権限アプリや UAC 画面では効かないことがあります。
+- macOS receiverの入力注入はAccessibility権限が必要で、ログイン画面など一部の保護された画面には入力できません。
 - macOS の HID 検出と event tap のタイミング差で、`F18` / `F19` の key down がローカルに一瞬見える可能性があります。
 - 未対応HID usageはreceiver側でログして無視します。
 - 通信は平文 UDP で、認証も暗号化もありません。

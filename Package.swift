@@ -10,6 +10,10 @@ let package = Package(
         .executable(
             name: "universal-control-minimal",
             targets: ["UniversalControlMinimal"]
+        ),
+        .executable(
+            name: "universal-control-mac-receiver",
+            targets: ["UniversalControlMacReceiver"]
         )
     ],
     targets: [
@@ -20,6 +24,13 @@ let package = Package(
                 .linkedFramework("Network"),
                 .linkedFramework("IOKit"),
                 .linkedFramework("CoreFoundation")
+            ]
+        ),
+        .executableTarget(
+            name: "UniversalControlMacReceiver",
+            linkerSettings: [
+                .linkedFramework("ApplicationServices"),
+                .linkedFramework("Network")
             ]
         )
     ]

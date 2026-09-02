@@ -7,7 +7,11 @@
   },
   "slots": {
     "2": {
-      "apply": false
+      "cursor_sensitivity": 1.0,
+      "scroll_sensitivity": 1.0,
+      "mappings": {
+        "globe": "kana_abc_toggle"
+      }
     }
   }
 }

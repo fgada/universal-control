@@ -9,6 +9,10 @@ enum PacketKind: UInt8 {
     case sync = 6
 }
 
+enum SyntheticUsage {
+    static let kanaABCToggle = UInt16(0xFF04)
+}
+
 struct KeyPacket: Equatable {
     let usage: UInt16
     let isDown: Bool

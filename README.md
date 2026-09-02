@@ -184,18 +184,22 @@ swift run universal-control-minimal --target-host 192.168.1.25
   },
   "slots": {
     "2": {
-      "apply": false
+      "cursor_sensitivity": 1.0,
+      "scroll_sensitivity": 1.0,
+      "mappings": {
+        "globe": "kana_abc_toggle"
+      }
     }
   }
 }
 ```
 
-トップレベルの設定は全スロットの既定値です。`slots`の`1`、`2`、`3`はそれぞれ`F13`、`F14`、`F15`に対応します。上の例では2番目のreceiverだけ`input-config.json`を適用せず、HID usageとポインタ・スクロール量をそのまま送ります。Mac receiverを2番目に指定する場合に利用できます。
+トップレベルの設定は全スロットの既定値です。`slots`の`1`、`2`、`3`はそれぞれ`F13`、`F14`、`F15`に対応します。上の例では2番目のMac receiverだけ感度を既定値に戻し、Globeをかな/ABC切り替えにします。
 
 スロット内で`cursor_sensitivity`、`scroll_sensitivity`、`mappings`を指定すると、そのスロットだけ上書きできます。省略した項目はトップレベル設定を継承し、空の`"mappings": {}`はremapを無効にします。
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
-日本語キーボード系の `henkan` / `muhenkan` も指定できます。
+日本語キーボード系の `henkan` / `muhenkan`、Mac receiver用の `kana_abc_toggle` も指定できます。
 `cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
 `scroll_sensitivity` の既定値も `1.0` で、`1.1` で多く、`0.9` で少なくスクロールします。
 

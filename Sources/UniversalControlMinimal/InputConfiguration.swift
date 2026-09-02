@@ -366,6 +366,10 @@ private enum HIDUsageToken {
         register(0x64, ["non_us_backslash", "nonusbackslash"])
         register(0x65, ["application", "menu"])
         register(SyntheticUsage.globe, ["globe", "fn", "earth", "earth_key", "地球儀"])
+        register(
+            SyntheticUsage.kanaABCToggle,
+            ["kana_abc_toggle", "kana_english_toggle", "かな英数切替"]
+        )
         register(0x8A, ["henkan", "convert", "ime_convert", "international4", "変換"])
         register(0x8B, ["muhenkan", "nonconvert", "non_convert", "ime_nonconvert", "international5", "無変換"])
 
@@ -413,6 +417,7 @@ private enum HIDUsageToken {
         0xE6: "right_option",
         0xE7: "right_command",
         SyntheticUsage.globe: "globe",
+        SyntheticUsage.kanaABCToggle: "kana_abc_toggle",
         0x8A: "henkan",
         0x8B: "muhenkan"
     ]

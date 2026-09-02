@@ -1,4 +1,5 @@
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 
 final class InputInjector {
@@ -16,6 +17,24 @@ final class InputInjector {
 
         event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: isDown)
         event.post(tap: .cghidEventTap)
+    }
+
+    func sendKanaABCToggle(modifierMask: UInt8) {
+        let currentInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let isASCIICapable = TISGetInputSourceProperty(
+            currentInputSource,
+            kTISPropertyInputSourceIsASCIICapable
+        ).map { property in
+            Unmanaged<CFBoolean>.fromOpaque(property).takeUnretainedValue() == kCFBooleanTrue
+        } ?? true
+
+        // JIS Kana selects Japanese input; JIS Eisu selects ABC input.
+        let keyCode: CGKeyCode = isASCIICapable ? 0x68 : 0x66
+        let destination = isASCIICapable ? "kana" : "ABC"
+        let mapping = MacKeyMapping(keyCode)
+        print("kana_abc_toggle: switching to \(destination)")
+        sendKey(mapping, isDown: true, modifierMask: modifierMask)
+        sendKey(mapping, isDown: false, modifierMask: modifierMask)
     }
 
     func sendKeyRepeat(_ mapping: MacKeyMapping, modifierMask: UInt8) {

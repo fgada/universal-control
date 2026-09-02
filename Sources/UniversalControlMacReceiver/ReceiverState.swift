@@ -72,6 +72,17 @@ final class ReceiverState {
     private func handleKey(_ packet: KeyPacket) {
         guard sessionActive, !awaitingResync else { return }
 
+        if packet.usage == SyntheticUsage.kanaABCToggle {
+            if packet.isDown {
+                if pressedKeys.insert(packet.usage).inserted {
+                    injector.sendKanaABCToggle(modifierMask: modifierMask)
+                }
+            } else {
+                pressedKeys.remove(packet.usage)
+            }
+            return
+        }
+
         if let modifierBit = HIDUsageMapper.modifierBit(for: packet.usage) {
             setModifier(bit: modifierBit, isDown: packet.isDown)
             return

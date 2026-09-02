@@ -4,5 +4,10 @@
   "mappings": {
     "globe": "henkan",
     "left_command": "left_control"
+  },
+  "slots": {
+    "2": {
+      "apply": false
+    }
   }
 }

@@ -4,6 +4,7 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
     case missingTargetHost
     case missingValue(flag: String)
     case invalidPort(String)
+    case tooManyTargetHosts
     case unexpectedArgument(String)
     case helpRequested
 
@@ -15,6 +16,8 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
             return "Missing value for \(flag)."
         case let .invalidPort(rawValue):
             return "Invalid port: \(rawValue)."
+        case .tooManyTargetHosts:
+            return "At most three --target-host values can be specified."
         case let .unexpectedArgument(argument):
             return "Unexpected argument: \(argument)"
         case .helpRequested:
@@ -24,13 +27,13 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
 }
 
 struct CommandLineOptions {
-    static let usage = "Usage: universal-control-minimal --target-host <host> [--target-port <port>]"
+    static let usage = "Usage: universal-control-minimal --target-host <host> [--target-host <host> ...] [--target-port <port>]"
 
-    let targetHost: String
+    let targetHosts: [String]
     let targetPort: UInt16
 
     init(arguments: [String]) throws {
-        var targetHost: String?
+        var targetHosts: [String] = []
         var targetPort: UInt16 = 50001
 
         var iterator = arguments.makeIterator()
@@ -40,7 +43,12 @@ struct CommandLineOptions {
                 guard let value = iterator.next(), !value.isEmpty else {
                     throw CommandLineOptionsError.missingValue(flag: "--target-host")
                 }
-                targetHost = value
+                if !targetHosts.contains(value) {
+                    targetHosts.append(value)
+                    if targetHosts.count > 3 {
+                        throw CommandLineOptionsError.tooManyTargetHosts
+                    }
+                }
 
             case "--target-port":
                 guard let value = iterator.next(), !value.isEmpty else {
@@ -59,11 +67,11 @@ struct CommandLineOptions {
             }
         }
 
-        guard let targetHost else {
+        guard !targetHosts.isEmpty else {
             throw CommandLineOptionsError.missingTargetHost
         }
 
-        self.targetHost = targetHost
+        self.targetHosts = targetHosts
         self.targetPort = targetPort
     }
 }

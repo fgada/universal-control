@@ -4,7 +4,7 @@ import Foundation
 do {
     let options = try CommandLineOptions(arguments: Array(CommandLine.arguments.dropFirst()))
     let inputConfiguration = try InputConfiguration.loadDefault()
-    let sender = try UDPEventSender(host: options.targetHost, port: options.targetPort)
+    let sender = try UDPEventSender(hosts: options.targetHosts, port: options.targetPort)
     let remoteModeController = RemoteModeController(sender: sender, inputConfiguration: inputConfiguration)
     let eventTapController = EventTapController(remoteModeController: remoteModeController)
 
@@ -18,7 +18,10 @@ do {
     }
 
     print("Starting universal-control-minimal")
-    print("Sending input to \(options.targetHost):\(options.targetPort)")
+    print("Remote targets:")
+    for (index, host) in options.targetHosts.enumerated() {
+        print("  F\(13 + index): \(host):\(options.targetPort)")
+    }
     if let sourcePath = inputConfiguration.sourcePath {
         print("Loaded input configuration from \(sourcePath)")
         for line in inputConfiguration.logLines() {
@@ -26,6 +29,7 @@ do {
         }
     }
     print("Toggle remote mode with F19.")
+    print("Select remote targets with F13, F14, and F15.")
     print("Toggle jitter mode with F18.")
     print("Grant Input Monitoring and Accessibility permissions if events are missing or suppression does not work.")
 

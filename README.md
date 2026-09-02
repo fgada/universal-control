@@ -4,7 +4,7 @@ macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成の
 
 - macOS sender / receiverはSwift CLI
 - Windows receiverは.NET 8 CLI、Ubuntu receiverはC11
-- 同一 LAN の 1 対 1 接続前提
+- 同一 LAN の最大3台のreceiverをファンクションキーで切り替え
 - 手動トグルでリモート入力を開始 / 停止
 - `F18`で人が微調整したようなジッター移動をreceiver側へ送信
 - リモート配信中は macOS ローカル入力を suppress
@@ -24,7 +24,6 @@ macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成の
 v1 では次は未対応です。
 
 - 画面端による自動切替
-- 複数端末切替
 - クリップボード共有
 - 水平スクロール
 - トラックパッド gesture
@@ -49,10 +48,14 @@ receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、U
 
 トグルキーは次です。
 
+- `F13`: 1番目のreceiverを選択してリモート入力を開始
+- `F14`: 2番目のreceiverを選択してリモート入力を開始
+- `F15`: 3番目のreceiverを選択してリモート入力を開始
 - `F18`: ジッターモード
-- `F19`
+- `F19`: リモート / ローカルモード切り替え
 
-`F18`はリモートモードと独立して動作し、ON中はreceiver側へ小さな相対ポインタ移動だけを送り続けます。
+`F13`〜`F15`で選択できるのは、対応する順番の`--target-host`が指定されている場合だけです。同時配信はせず、選択中の1台だけへ送信します。
+`F18`はリモートモードと独立して動作し、ON中はreceiver側へ小さな相対ポインタ移動だけを送り続けます。ONのまま`F13`〜`F15`で切り替えると、切り替え前のreceiverにも通常入力は送らずjitterだけを継続します。
 `F19` は通常のリモート入力モードです。トグルキー自体はリモートにもローカルにも流さない設計です。
 
 ## Requirements
@@ -139,7 +142,7 @@ sudo udevadm trigger
 ### 2. macOS sender を起動
 
 ```bash
-swift run universal-control-minimal --target-host <WINDOWS_IP> --target-port 50001
+swift run universal-control-minimal --target-host <RECEIVER_IP> --target-port 50001
 ```
 
 `--target-port` は省略できます。
@@ -151,6 +154,17 @@ sender は起動ディレクトリの `input-config.json` を自動で読み込�
 ```bash
 swift run universal-control-minimal --target-host 192.168.1.25
 ```
+
+複数のreceiverを切り替える場合は、切り替え順に`--target-host`を指定します。
+
+```bash
+swift run universal-control-minimal \
+  --target-host 192.168.1.25 \
+  --target-host 192.168.1.26 \
+  --target-host 192.168.1.27
+```
+
+この例では`F13`が`.25`、`F14`が`.26`、`F15`が`.27`です。押した時点でそのreceiverへのリモート入力を開始し、他のreceiverへは送信しません。
 
 Command を Ctrl に寄せたい場合の例:
 
@@ -167,24 +181,35 @@ swift run universal-control-minimal --target-host 192.168.1.25
   "mappings": {
     "left_command": "left_control",
     "right_command": "right_control"
+  },
+  "slots": {
+    "2": {
+      "apply": false
+    }
   }
 }
 ```
+
+トップレベルの設定は全スロットの既定値です。`slots`の`1`、`2`、`3`はそれぞれ`F13`、`F14`、`F15`に対応します。上の例では2番目のreceiverだけ`input-config.json`を適用せず、HID usageとポインタ・スクロール量をそのまま送ります。Mac receiverを2番目に指定する場合に利用できます。
+
+スロット内で`cursor_sensitivity`、`scroll_sensitivity`、`mappings`を指定すると、そのスロットだけ上書きできます。省略した項目はトップレベル設定を継承し、空の`"mappings": {}`はremapを無効にします。
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
 日本語キーボード系の `henkan` / `muhenkan` も指定できます。
 `cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
 `scroll_sensitivity` の既定値も `1.0` で、`1.1` で多く、`0.9` で少なくスクロールします。
 
-### 3. リモート入力を開始
+### 3. リモート入力を開始・切り替え
 
-macOS 上で次を押します。
+1〜3番目のreceiverを直接選択するには、macOS上で`F13`、`F14`、`F15`を押します。
+
+最後に選択したreceiverに対してリモート / ローカルを切り替える場合は次を押します。起動後まだ選択していない場合は、1番目のreceiverが対象です。
 
 ```text
 F19
 ```
 
-再度 `F19` を押すとローカルへ戻ります。
+再度`F19`を押すとローカルへ戻ります。
 
 ### 4. ジッターモードを使う
 
@@ -195,7 +220,7 @@ F18
 ```
 
 再度 `F18` を押すと停止します。  
-ジッターモードは`F19`のリモートモードと独立しており、`F19`がOFFでもreceiver側にはジッター移動だけを送り続けます。
+ジッターモードは`F19`のリモートモードと独立しており、`F19`がOFFでもreceiver側にはジッター移動だけを送り続けます。ジッターモード中に送信先を切り替えた場合、それまで選択したreceiverへのジッターは`F18`でOFFにするまで継続します。
 
 ## Permissions
 
@@ -243,7 +268,7 @@ macOS receiverは入力注入のため、次を許可してください。未許
 
 - `SendInput` は UIPI 制約を受けるため、管理者権限アプリや UAC 画面では効かないことがあります。
 - macOS receiverの入力注入はAccessibility権限が必要で、ログイン画面など一部の保護された画面には入力できません。
-- macOS の HID 検出と event tap のタイミング差で、`F18` / `F19` の key down がローカルに一瞬見える可能性があります。
+- macOS の HID 検出と event tap のタイミング差で、`F13`〜`F15` / `F18` / `F19` の key down がローカルに一瞬見える可能性があります。
 - 未対応HID usageはreceiver側でログして無視します。
 - 通信は平文 UDP で、認証も暗号化もありません。
 

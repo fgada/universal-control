@@ -24,8 +24,12 @@ final class RemoteModeController: @unchecked Sendable {
     private var pendingPointerDY: Int32 = 0
     private var pointerDXRemainder: Double = 0
     private var pointerDYRemainder: Double = 0
+    private var jitterDXRemainders: [Int: Double] = [:]
+    private var jitterDYRemainders: [Int: Double] = [:]
     private var pendingWheelLinesY: Double = 0
     private var toggleSuppressionActive = false
+    private var selectedTargetIndex = 0
+    private var jitterTargetIndices: Set<Int> = []
 
     init(sender: UDPEventSender, inputConfiguration: InputConfiguration) {
         self.sender = sender
@@ -38,7 +42,7 @@ final class RemoteModeController: @unchecked Sendable {
         syncTimer.schedule(deadline: .now() + .milliseconds(200), repeating: .milliseconds(200))
 
         jitterController = JitterModeController(queue: queue) { [weak self] dx, dy in
-            self?.enqueuePointerDelta(dx: dx, dy: dy)
+            self?.sendJitterPointer(dx: dx, dy: dy)
         }
 
         pointerFlushTimer.setEventHandler { [weak self] in
@@ -115,7 +119,10 @@ final class RemoteModeController: @unchecked Sendable {
     private func handleKey(usage: UInt16, isDown: Bool) {
         updatePhysicalKeyState(usage: usage, isDown: isDown)
 
-        if isDown, usage == ToggleKey.remoteModeUsage {
+        if isDown, let targetIndex = ToggleKey.targetIndex(for: usage) {
+            toggleSuppressionActive = true
+            selectRemoteTarget(at: targetIndex)
+        } else if isDown, usage == ToggleKey.remoteModeUsage {
             toggleSuppressionActive = true
             toggleRemoteMode()
         } else if isDown, usage == ToggleKey.jitterModeUsage {
@@ -133,7 +140,8 @@ final class RemoteModeController: @unchecked Sendable {
             return
         }
 
-        if !inputConfiguration.hasKeyMappings {
+        let inputProfile = activeInputProfile
+        if !inputProfile.hasKeyMappings {
             sender.send(packetEncoder.key(usage: usage, isDown: isDown))
             return
         }
@@ -214,6 +222,56 @@ final class RemoteModeController: @unchecked Sendable {
         updateTransportSession(previouslyActive: wasTransportActive)
     }
 
+    private func selectRemoteTarget(at targetIndex: Int) {
+        guard let targetHost = sender.targetHost(at: targetIndex) else {
+            print("No remote target configured for F\(13 + targetIndex).")
+            return
+        }
+
+        let wasTransportActive = isTransportActive
+        let targetChanged = selectedTargetIndex != targetIndex
+
+        if targetChanged, wasTransportActive {
+            if jitterController.isEnabled {
+                jitterTargetIndices.insert(selectedTargetIndex)
+                sender.send(
+                    packetEncoder.sync(state: .empty),
+                    toTargetAt: selectedTargetIndex
+                )
+            } else {
+                sender.send(
+                    packetEncoder.session(active: false),
+                    toTargetAt: selectedTargetIndex
+                )
+            }
+        }
+
+        if targetChanged {
+            clearPointerState()
+            pendingWheelLinesY = 0
+            guard sender.selectTarget(at: targetIndex) else { return }
+            selectedTargetIndex = targetIndex
+            if jitterController.isEnabled {
+                jitterTargetIndices.insert(targetIndex)
+            }
+        }
+
+        if mode == .local {
+            reloadInputConfiguration()
+            mode = .remote
+            pendingWheelLinesY = 0
+            clearPointerState()
+            print("Remote mode enabled")
+        }
+
+        print("Remote target selected: F\(13 + targetIndex) -> \(targetHost)")
+
+        if !wasTransportActive || targetChanged {
+            sender.send(packetEncoder.session(active: true))
+        }
+        sendAllSyncs()
+    }
+
     private func reloadInputConfiguration() {
         do {
             inputConfiguration = try InputConfiguration.loadDefault()
@@ -235,12 +293,27 @@ final class RemoteModeController: @unchecked Sendable {
     private func toggleJitterMode() {
         let wasTransportActive = isTransportActive
         let isEnabled = jitterController.toggle()
+        clearJitterPointerState()
+
+        if isEnabled {
+            jitterTargetIndices.insert(selectedTargetIndex)
+        } else {
+            let stoppedTargetIndices = jitterTargetIndices
+            jitterTargetIndices.removeAll()
+            for targetIndex in stoppedTargetIndices where targetIndex != selectedTargetIndex {
+                sender.send(
+                    packetEncoder.session(active: false),
+                    toTargetAt: targetIndex
+                )
+            }
+        }
+
         print("Jitter mode \(isEnabled ? "enabled" : "disabled")")
         updateTransportSession(previouslyActive: wasTransportActive)
     }
 
     private func flushPointerIfNeeded() {
-        guard isTransportActive else {
+        guard mode == .remote else {
             clearPointerState()
             return
         }
@@ -256,7 +329,17 @@ final class RemoteModeController: @unchecked Sendable {
 
     private func sendSyncIfNeeded() {
         guard isTransportActive else { return }
+        sendAllSyncs()
+    }
+
+    private func sendAllSyncs() {
         sendSync()
+        let jitterOnlyTargets = jitterTargetIndices.subtracting([selectedTargetIndex])
+        guard !jitterOnlyTargets.isEmpty else { return }
+        sender.send(
+            packetEncoder.sync(state: .empty),
+            toTargetIndices: jitterOnlyTargets
+        )
     }
 
     private func sendSync() {
@@ -267,10 +350,11 @@ final class RemoteModeController: @unchecked Sendable {
         guard mode == .remote else { return .empty }
 
         let suppressedToggleUsages = toggleSuppressionActive ? ToggleKey.usages : []
+        let inputProfile = activeInputProfile
         let effectivePressedKeys = Set(
             physicalPressedKeys
                 .subtracting(suppressedToggleUsages)
-                .map { inputConfiguration.map($0) }
+                .map { inputProfile.map($0) }
         )
         let modifierState = ModifierState.from(usages: effectivePressedKeys)
         let pressedKeys = effectivePressedKeys
@@ -318,16 +402,20 @@ final class RemoteModeController: @unchecked Sendable {
         mode == .remote || jitterController.isEnabled
     }
 
+    private var activeInputProfile: InputProfile {
+        inputConfiguration.profile(forTargetIndex: selectedTargetIndex)
+    }
+
     private func updateTransportSession(previouslyActive: Bool) {
         let isActive = isTransportActive
 
         switch (previouslyActive, isActive) {
         case (false, true):
             sender.send(packetEncoder.session(active: true))
-            sendSync()
+            sendAllSyncs()
 
         case (true, true):
-            sendSync()
+            sendAllSyncs()
 
         case (true, false):
             clearPointerState()
@@ -345,8 +433,23 @@ final class RemoteModeController: @unchecked Sendable {
         pendingPointerDY += scaledDelta.dy
     }
 
+    private func sendJitterPointer(dx: Int16, dy: Int16) {
+        guard jitterController.isEnabled, !jitterTargetIndices.isEmpty else { return }
+        for targetIndex in jitterTargetIndices.sorted() {
+            let scaledDelta = scaleJitterPointerDelta(dx: dx, dy: dy, targetIndex: targetIndex)
+            let scaledDX = Int16(clamping: scaledDelta.dx)
+            let scaledDY = Int16(clamping: scaledDelta.dy)
+            guard scaledDX != 0 || scaledDY != 0 else { continue }
+
+            sender.send(
+                packetEncoder.pointer(dx: scaledDX, dy: scaledDY),
+                toTargetAt: targetIndex
+            )
+        }
+    }
+
     private func sendScaledWheel(deltaY: Double) {
-        let scaledDeltaY = deltaY * inputConfiguration.scrollSensitivity + pendingWheelLinesY
+        let scaledDeltaY = deltaY * activeInputProfile.scrollSensitivity + pendingWheelLinesY
         let linesToSend = Int16(clamping: Int(scaledDeltaY.rounded(.towardZero)))
         pendingWheelLinesY = scaledDeltaY - Double(linesToSend)
 
@@ -355,8 +458,8 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func scalePointerDelta(dx: Int16, dy: Int16) -> (dx: Int32, dy: Int32) {
-        let scaledDX = Double(dx) * inputConfiguration.cursorSensitivity + pointerDXRemainder
-        let scaledDY = Double(dy) * inputConfiguration.cursorSensitivity + pointerDYRemainder
+        let scaledDX = Double(dx) * activeInputProfile.cursorSensitivity + pointerDXRemainder
+        let scaledDY = Double(dy) * activeInputProfile.cursorSensitivity + pointerDYRemainder
         let wholeDX = Int32(scaledDX.rounded(.towardZero))
         let wholeDY = Int32(scaledDY.rounded(.towardZero))
 
@@ -366,11 +469,33 @@ final class RemoteModeController: @unchecked Sendable {
         return (wholeDX, wholeDY)
     }
 
+    private func scaleJitterPointerDelta(
+        dx: Int16,
+        dy: Int16,
+        targetIndex: Int
+    ) -> (dx: Int32, dy: Int32) {
+        let profile = inputConfiguration.profile(forTargetIndex: targetIndex)
+        let scaledDX = Double(dx) * profile.cursorSensitivity + (jitterDXRemainders[targetIndex] ?? 0)
+        let scaledDY = Double(dy) * profile.cursorSensitivity + (jitterDYRemainders[targetIndex] ?? 0)
+        let wholeDX = Int32(scaledDX.rounded(.towardZero))
+        let wholeDY = Int32(scaledDY.rounded(.towardZero))
+
+        jitterDXRemainders[targetIndex] = scaledDX - Double(wholeDX)
+        jitterDYRemainders[targetIndex] = scaledDY - Double(wholeDY)
+
+        return (wholeDX, wholeDY)
+    }
+
     private func clearPointerState() {
         pendingPointerDX = 0
         pendingPointerDY = 0
         pointerDXRemainder = 0
         pointerDYRemainder = 0
+    }
+
+    private func clearJitterPointerState() {
+        jitterDXRemainders.removeAll()
+        jitterDYRemainders.removeAll()
     }
 
     private func buttonMaskBit(for button: UInt8) -> UInt8? {
@@ -389,6 +514,9 @@ final class RemoteModeController: @unchecked Sendable {
 
 private enum ToggleKeyCode {
     static let all: Set<CGKeyCode> = [
+        CGKeyCode(kVK_F13),
+        CGKeyCode(kVK_F14),
+        CGKeyCode(kVK_F15),
         CGKeyCode(kVK_F18),
         CGKeyCode(kVK_F19)
     ]

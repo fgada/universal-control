@@ -105,9 +105,18 @@ enum SyntheticUsage {
 enum ToggleKey {
     static let remoteModeUsage = UInt16(kHIDUsage_KeyboardF19)
     static let jitterModeUsage = UInt16(kHIDUsage_KeyboardF18)
-    static let usages: Set<UInt16> = [remoteModeUsage, jitterModeUsage]
+    static let targetUsages = [
+        UInt16(kHIDUsage_KeyboardF13),
+        UInt16(kHIDUsage_KeyboardF14),
+        UInt16(kHIDUsage_KeyboardF15)
+    ]
+    static let usages: Set<UInt16> = Set(targetUsages + [remoteModeUsage, jitterModeUsage])
 
     static func isToggleUsage(_ usage: UInt16) -> Bool {
         usages.contains(usage)
+    }
+
+    static func targetIndex(for usage: UInt16) -> Int? {
+        targetUsages.firstIndex(of: usage)
     }
 }

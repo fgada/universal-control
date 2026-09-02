@@ -26,19 +26,16 @@ enum InputConfigurationError: Error, CustomStringConvertible {
     }
 }
 
-struct InputConfiguration: Sendable {
-    static let defaultFileName = "input-config.json"
-    static let `default` = InputConfiguration(
+struct InputProfile: Sendable {
+    static let `default` = InputProfile(
         overrides: [:],
         cursorSensitivity: 1.0,
-        scrollSensitivity: 1.0,
-        sourcePath: nil
+        scrollSensitivity: 1.0
     )
 
     let overrides: [UInt16: UInt16]
     let cursorSensitivity: Double
     let scrollSensitivity: Double
-    let sourcePath: String?
 
     var hasKeyMappings: Bool {
         !overrides.isEmpty
@@ -48,20 +45,74 @@ struct InputConfiguration: Sendable {
         overrides[usage] ?? usage
     }
 
-    func logLines() -> [String] {
+    fileprivate func logLines(indentation: String) -> [String] {
         var lines = [
-            "  cursor_sensitivity -> \(formattedCursorSensitivity)",
-            "  scroll_sensitivity -> \(formattedScrollSensitivity)"
+            "\(indentation)cursor_sensitivity -> \(formattedCursorSensitivity)",
+            "\(indentation)scroll_sensitivity -> \(formattedScrollSensitivity)"
         ]
         let mappingLines = overrides.keys.sorted().compactMap { sourceUsage -> String? in
             guard let targetUsage = overrides[sourceUsage] else {
                 return nil
             }
 
-            return "  \(HIDUsageToken.displayName(for: sourceUsage)) -> \(HIDUsageToken.displayName(for: targetUsage))"
+            return "\(indentation)\(HIDUsageToken.displayName(for: sourceUsage)) -> \(HIDUsageToken.displayName(for: targetUsage))"
         }
 
         lines.append(contentsOf: mappingLines)
+        return lines
+    }
+
+    private var formattedCursorSensitivity: String {
+        String(format: "%.3g", cursorSensitivity)
+    }
+
+    private var formattedScrollSensitivity: String {
+        String(format: "%.3g", scrollSensitivity)
+    }
+}
+
+private enum SlotInputConfiguration: Sendable {
+    case disabled
+    case profile(InputProfile)
+}
+
+struct InputConfiguration: Sendable {
+    static let defaultFileName = "input-config.json"
+    static let `default` = InputConfiguration(
+        defaultProfile: .default,
+        slotConfigurations: [:],
+        sourcePath: nil
+    )
+
+    private let defaultProfile: InputProfile
+    private let slotConfigurations: [Int: SlotInputConfiguration]
+    let sourcePath: String?
+
+    func profile(forTargetIndex targetIndex: Int) -> InputProfile {
+        switch slotConfigurations[targetIndex + 1] {
+        case .disabled:
+            return .default
+        case let .profile(profile):
+            return profile
+        case nil:
+            return defaultProfile
+        }
+    }
+
+    func logLines() -> [String] {
+        var lines = ["  default:"]
+        lines.append(contentsOf: defaultProfile.logLines(indentation: "    "))
+
+        for slot in slotConfigurations.keys.sorted() {
+            guard let configuration = slotConfigurations[slot] else { continue }
+            switch configuration {
+            case .disabled:
+                lines.append("  slot \(slot): input config disabled")
+            case let .profile(profile):
+                lines.append("  slot \(slot):")
+                lines.append(contentsOf: profile.logLines(indentation: "    "))
+            }
+        }
         return lines
     }
 
@@ -75,14 +126,6 @@ struct InputConfiguration: Sendable {
         }
 
         return try loadRequired(from: defaultPath)
-    }
-
-    private var formattedCursorSensitivity: String {
-        String(format: "%.3g", cursorSensitivity)
-    }
-
-    private var formattedScrollSensitivity: String {
-        String(format: "%.3g", scrollSensitivity)
     }
 
     private static func loadRequired(from path: String) throws -> InputConfiguration {
@@ -107,27 +150,86 @@ struct InputConfiguration: Sendable {
             throw InputConfigurationError.invalidFormat("Top-level JSON must be an object.")
         }
 
-        let mappings: [String: Any]
-        if let rawMappings = root["mappings"] {
-            guard let parsedMappings = rawMappings as? [String: Any] else {
+        let defaultProfile = try parseProfile(from: root, fallback: .default)
+        let slotConfigurations = try parseSlots(from: root, defaultProfile: defaultProfile)
+
+        return InputConfiguration(
+            defaultProfile: defaultProfile,
+            slotConfigurations: slotConfigurations,
+            sourcePath: expandedPath
+        )
+    }
+
+    private static func parseSlots(
+        from root: [String: Any],
+        defaultProfile: InputProfile
+    ) throws -> [Int: SlotInputConfiguration] {
+        guard let rawSlots = root["slots"] else { return [:] }
+        guard let slots = rawSlots as? [String: Any] else {
+            throw InputConfigurationError.invalidFormat("Expected a 'slots' object.")
+        }
+
+        var configurations: [Int: SlotInputConfiguration] = [:]
+        for (rawSlot, rawConfiguration) in slots {
+            guard let slot = Int(rawSlot), (1...3).contains(slot) else {
+                throw InputConfigurationError.invalidFormat("Slot keys must be '1', '2', or '3'.")
+            }
+            guard let configuration = rawConfiguration as? [String: Any] else {
+                throw InputConfigurationError.invalidFormat("Expected slot '\(rawSlot)' to be an object.")
+            }
+
+            if let rawApply = configuration["apply"] {
+                guard let apply = rawApply as? Bool else {
+                    throw InputConfigurationError.invalidFormat("Expected slot '\(rawSlot).apply' to be a boolean.")
+                }
+                if !apply {
+                    configurations[slot] = .disabled
+                    continue
+                }
+            }
+
+            configurations[slot] = .profile(
+                try parseProfile(from: configuration, fallback: defaultProfile)
+            )
+        }
+        return configurations
+    }
+
+    private static func parseProfile(
+        from object: [String: Any],
+        fallback: InputProfile
+    ) throws -> InputProfile {
+        let overrides: [UInt16: UInt16]
+        if let rawMappings = object["mappings"] {
+            guard let mappings = rawMappings as? [String: Any] else {
                 throw InputConfigurationError.invalidFormat("Expected a 'mappings' object.")
             }
-            mappings = parsedMappings
+            overrides = try parseMappings(mappings)
         } else {
-            mappings = [:]
+            overrides = fallback.overrides
         }
 
         let cursorSensitivity = try parseSensitivity(
-            from: root,
+            from: object,
             key: "cursor_sensitivity",
+            fallback: fallback.cursorSensitivity,
             errorFactory: InputConfigurationError.invalidCursorSensitivity
         )
         let scrollSensitivity = try parseSensitivity(
-            from: root,
+            from: object,
             key: "scroll_sensitivity",
+            fallback: fallback.scrollSensitivity,
             errorFactory: InputConfigurationError.invalidScrollSensitivity
         )
 
+        return InputProfile(
+            overrides: overrides,
+            cursorSensitivity: cursorSensitivity,
+            scrollSensitivity: scrollSensitivity
+        )
+    }
+
+    private static func parseMappings(_ mappings: [String: Any]) throws -> [UInt16: UInt16] {
         var overrides: [UInt16: UInt16] = [:]
         for (rawSource, rawTargetValue) in mappings {
             guard let sourceUsage = HIDUsageToken.parse(rawSource) else {
@@ -155,21 +257,17 @@ struct InputConfiguration: Sendable {
             overrides[sourceUsage] = targetUsage
         }
 
-        return InputConfiguration(
-            overrides: overrides,
-            cursorSensitivity: cursorSensitivity,
-            scrollSensitivity: scrollSensitivity,
-            sourcePath: expandedPath
-        )
+        return overrides
     }
 
     private static func parseSensitivity(
         from root: [String: Any],
         key: String,
+        fallback: Double,
         errorFactory: (String) -> InputConfigurationError
     ) throws -> Double {
         guard let rawValue = root[key] else {
-            return 1.0
+            return fallback
         }
 
         let sensitivity: Double

@@ -19,9 +19,10 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
-enum { DEFAULT_PORT = 50001, HEADER_SIZE = 10, MAX_PACKET = 1024 };
-enum { KIND_SESSION = 1, KIND_KEY, KIND_BUTTON, KIND_POINTER, KIND_WHEEL, KIND_SYNC };
+enum { DEFAULT_PORT = 50001, HEADER_SIZE = 10, MAX_TEXT_BYTES = 60 * 1024, MAX_PACKET = HEADER_SIZE + MAX_TEXT_BYTES };
+enum { KIND_SESSION = 1, KIND_KEY, KIND_BUTTON, KIND_POINTER, KIND_WHEEL, KIND_SYNC, KIND_TEXT };
 static const int64_t SYNC_TIMEOUT_MS = 300;
 static const int64_t SESSION_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 static const int64_t REPEAT_DELAY_MS = 500;
@@ -138,6 +139,62 @@ static int write_all(int fd, const void *buffer, size_t size)
         size -= (size_t)written;
     }
     return 0;
+}
+
+static bool run_text_command(char *const arguments[])
+{
+    pid_t child = fork();
+    if (child < 0) {
+        perror("fork text input helper");
+        return false;
+    }
+    if (child == 0) {
+        execvp(arguments[0], arguments);
+        _exit(127);
+    }
+
+    int status;
+    while (waitpid(child, &status, 0) < 0) {
+        if (errno == EINTR) continue;
+        perror("waitpid text input helper");
+        return false;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+static void handle_text(const uint8_t *payload, size_t length)
+{
+    if (memchr(payload, '\0', length) != NULL) {
+        fprintf(stderr, "Ignoring text packet containing a NUL byte.\n");
+        return;
+    }
+
+    char *text = malloc(length + 1);
+    if (text == NULL) {
+        perror("allocate received text");
+        return;
+    }
+    memcpy(text, payload, length);
+    text[length] = '\0';
+
+    bool inserted = false;
+    const char *wayland_display = getenv("WAYLAND_DISPLAY");
+    const char *x_display = getenv("DISPLAY");
+    if (wayland_display != NULL && *wayland_display != '\0') {
+        char *arguments[] = { "wtype", "--", text, NULL };
+        inserted = run_text_command(arguments);
+    }
+    if (!inserted && x_display != NULL && *x_display != '\0') {
+        char *arguments[] = { "xdotool", "type", "--clearmodifiers", "--delay", "0", "--", text, NULL };
+        inserted = run_text_command(arguments);
+    }
+
+    if (inserted) {
+        printf("Inserted %zu UTF-8 bytes into the focused field.\n", length);
+    } else {
+        fprintf(stderr, "Failed to insert text. Install wtype (Wayland) or xdotool (X11).\n");
+    }
+    free(text);
 }
 
 static int injector_emit(Injector *injector, uint16_t type, uint16_t code, int32_t value)
@@ -418,7 +475,7 @@ static void check_timers(ReceiverState *state)
 static void process_packet(ReceiverState *state, const uint8_t *packet, size_t length)
 {
     if (length < HEADER_SIZE || memcmp(packet, "UCM1", 4) != 0 || packet[4] != 1 ||
-        packet[9] < KIND_SESSION || packet[9] > KIND_SYNC) {
+        packet[9] < KIND_SESSION || packet[9] > KIND_TEXT) {
         fprintf(stderr, "Ignoring malformed packet header.\n");
         return;
     }
@@ -452,6 +509,10 @@ static void process_packet(ReceiverState *state, const uint8_t *packet, size_t l
             if (payload_length >= 3 && payload_length == 3u + (size_t)payload[2] * 2u)
                 handle_sync(state, payload, payload_length);
             else fprintf(stderr, "Ignoring malformed sync packet.\n");
+            break;
+        case KIND_TEXT:
+            if (payload_length <= MAX_TEXT_BYTES) handle_text(payload, payload_length);
+            else fprintf(stderr, "Ignoring oversized text packet.\n");
             break;
     }
 }

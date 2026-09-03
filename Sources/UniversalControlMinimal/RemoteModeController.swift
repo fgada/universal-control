@@ -1,4 +1,5 @@
 import ApplicationServices
+import AppKit
 import Carbon.HIToolbox
 import Foundation
 import IOKit.hid
@@ -122,6 +123,9 @@ final class RemoteModeController: @unchecked Sendable {
         if isDown, let targetIndex = ToggleKey.targetIndex(for: usage) {
             toggleSuppressionActive = true
             selectRemoteTarget(at: targetIndex)
+        } else if isDown, usage == ToggleKey.sendTextUsage {
+            toggleSuppressionActive = true
+            sendClipboardText()
         } else if isDown, usage == ToggleKey.remoteModeUsage {
             toggleSuppressionActive = true
             toggleRemoteMode()
@@ -220,6 +224,23 @@ final class RemoteModeController: @unchecked Sendable {
         }
 
         updateTransportSession(previouslyActive: wasTransportActive)
+    }
+
+    private func sendClipboardText() {
+        guard let text = NSPasteboard.general.string(forType: .string) else {
+            print("F16: sender clipboard does not contain text.")
+            return
+        }
+        guard let packet = packetEncoder.text(text) else {
+            fputs(
+                "F16: clipboard text exceeds \(PacketEncoder.maximumTextBytes) UTF-8 bytes; not sent.\n",
+                stderr
+            )
+            return
+        }
+
+        sender.send(packet)
+        print("F16: sent \(text.utf8.count) UTF-8 bytes to the selected receiver.")
     }
 
     private func selectRemoteTarget(at targetIndex: Int) {
@@ -517,6 +538,7 @@ private enum ToggleKeyCode {
         CGKeyCode(kVK_F13),
         CGKeyCode(kVK_F14),
         CGKeyCode(kVK_F15),
+        CGKeyCode(kVK_F16),
         CGKeyCode(kVK_F18),
         CGKeyCode(kVK_F19)
     ]

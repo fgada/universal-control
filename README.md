@@ -7,6 +7,7 @@ macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成の
 - 同一 LAN の最大3台のreceiverをファンクションキーで切り替え
 - 手動トグルでリモート入力を開始 / 停止
 - `F18`で人が微調整したようなジッター移動をreceiver側へ送信
+- `F16`でsenderのクリップボードテキストをreceiverのフォーカス位置へ直接入力
 - リモート配信中は macOS ローカル入力を suppress
 
 ## What It Does
@@ -24,7 +25,6 @@ macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成の
 v1 では次は未対応です。
 
 - 画面端による自動切替
-- クリップボード共有
 - 水平スクロール
 - トラックパッド gesture
 - 接続自動発見
@@ -51,12 +51,14 @@ receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、U
 - `F13`: 1番目のreceiverを選択してリモート入力を開始
 - `F14`: 2番目のreceiverを選択してリモート入力を開始
 - `F15`: 3番目のreceiverを選択してリモート入力を開始
+- `F16`: senderのクリップボードテキストを選択中receiverのフォーカス位置へ入力
 - `F18`: ジッターモード
 - `F19`: リモート / ローカルモード切り替え
 
 `F13`〜`F15`で選択できるのは、対応する順番の`--target-host`が指定されている場合だけです。同時配信はせず、選択中の1台だけへ送信します。
 `F18`はリモートモードと独立して動作し、ON中はreceiver側へ小さな相対ポインタ移動だけを送り続けます。ONのまま`F13`〜`F15`で切り替えると、切り替え前のreceiverにも通常入力は送らずjitterだけを継続します。
 `F19` は通常のリモート入力モードです。トグルキー自体はリモートにもローカルにも流さない設計です。
+`F16`はリモートモードのON/OFFに関係なく動作し、receiver側のクリップボードは変更しません。UTF-8で60 KiBを超えるテキストは送信しません。
 
 ## Requirements
 
@@ -78,6 +80,7 @@ receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、U
 - C11 compiler
 - Linux `uinput` headers
 - `/dev/uinput`への書き込み権限
+- テキスト入力用にWaylandでは`wtype`、X11では`xdotool`
 
 ## Build
 
@@ -97,7 +100,7 @@ dotnet build .\WindowsReceiver\UniversalControlWindowsReceiver.csproj
 
 ### Ubuntu receiver
 
-外部ライブラリは使用しません。C標準ライブラリ、POSIX API、Linux標準ヘッダーだけでビルドします。
+ビルド時の外部ライブラリは使用しません。C標準ライブラリ、POSIX API、Linux標準ヘッダーだけでビルドします。
 
 ```bash
 make -C LinuxReceiver
@@ -215,7 +218,17 @@ F19
 
 再度`F19`を押すとローカルへ戻ります。
 
-### 4. ジッターモードを使う
+### 4. senderのクリップボードテキストを入力する
+
+入力先のreceiverを選択し、receiver側でテキスト入力欄へフォーカスを合わせてから、macOS senderで次を押します。
+
+```text
+F16
+```
+
+senderのクリップボードにあるテキストが、receiverのクリップボードを変更せずにフォーカス位置へ直接入力されます。この操作はリモートモードがOFFでも使えます。
+
+### 5. ジッターモードを使う
 
 macOS 上で次を押します。
 
@@ -256,6 +269,7 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - `4`: pointer
 - `5`: wheel
 - `6`: sync
+- `7`: text（UTF-8、最大60 KiB）
 
 `sync`は200msごとに送られます。receiver側は300msを超えて途切れるとstuck key / stuck buttonを解放し、その後5分まではsessionを維持したままresyncを待ちます。`sync`が戻れば自動復帰し、5分を超えて戻らなければsessionを放棄します。
 
@@ -266,13 +280,13 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - ポインタ移動だけ 1ms 単位で coalescing します。
 - キー、ボタン、ホイールは即時送信します。
 - Windows 側は標準権限アプリ向けです。
-- Ubuntu receiverは外部ライブラリに依存せず、入力注入にカーネルの`uinput`を使用します。
+- Ubuntu receiverの通常入力はカーネルの`uinput`を使用します。Unicodeテキストの直接入力だけは、Waylandでは`wtype`、X11では`xdotool`を実行します。
 
 ## Known Limitations
 
 - `SendInput` は UIPI 制約を受けるため、管理者権限アプリや UAC 画面では効かないことがあります。
 - macOS receiverの入力注入はAccessibility権限が必要で、ログイン画面など一部の保護された画面には入力できません。
-- macOS の HID 検出と event tap のタイミング差で、`F13`〜`F15` / `F18` / `F19` の key down がローカルに一瞬見える可能性があります。
+- macOS の HID 検出と event tap のタイミング差で、`F13`〜`F16` / `F18` / `F19` の key down がローカルに一瞬見える可能性があります。
 - 未対応HID usageはreceiver側でログして無視します。
 - 通信は平文 UDP で、認証も暗号化もありません。
 

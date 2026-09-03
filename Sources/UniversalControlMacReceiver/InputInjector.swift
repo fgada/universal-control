@@ -3,7 +3,27 @@ import Carbon.HIToolbox
 import Foundation
 
 final class InputInjector {
+    private static let maximumUTF16UnitsPerTextEvent = 20
     private let eventSource = CGEventSource(stateID: .hidSystemState)
+
+    func sendText(_ text: String) {
+        var chunk: [UniChar] = []
+        chunk.reserveCapacity(Self.maximumUTF16UnitsPerTextEvent)
+
+        for scalar in text.unicodeScalars {
+            let units = Array(String(scalar).utf16)
+            if !chunk.isEmpty, chunk.count + units.count > Self.maximumUTF16UnitsPerTextEvent {
+                postTextChunk(chunk)
+                chunk.removeAll(keepingCapacity: true)
+            }
+            chunk.append(contentsOf: units)
+        }
+        if !chunk.isEmpty {
+            postTextChunk(chunk)
+        }
+
+        print("Inserted \(text.utf8.count) UTF-8 bytes into the focused field.")
+    }
 
     func sendKey(_ mapping: MacKeyMapping, isDown: Bool, modifierMask: UInt8) {
         guard let event = CGEvent(
@@ -17,6 +37,30 @@ final class InputInjector {
 
         event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: isDown)
         event.post(tap: .cghidEventTap)
+    }
+
+    private func postTextChunk(_ utf16: [UniChar]) {
+        guard let keyDown = CGEvent(
+            keyboardEventSource: eventSource,
+            virtualKey: 0,
+            keyDown: true
+        ), let keyUp = CGEvent(
+            keyboardEventSource: eventSource,
+            virtualKey: 0,
+            keyDown: false
+        ) else {
+            fputs("Failed to create text input event.\n", stderr)
+            return
+        }
+
+        utf16.withUnsafeBufferPointer { buffer in
+            keyDown.keyboardSetUnicodeString(
+                stringLength: buffer.count,
+                unicodeString: buffer.baseAddress
+            )
+        }
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
     }
 
     func sendKanaABCToggle(modifierMask: UInt8) {

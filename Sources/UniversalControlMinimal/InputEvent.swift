@@ -8,6 +8,7 @@ enum PacketKind: UInt8 {
     case pointer = 4
     case wheel = 5
     case sync = 6
+    case text = 7
 }
 
 struct ModifierState: OptionSet, CustomStringConvertible, Sendable {
@@ -104,6 +105,7 @@ enum SyntheticUsage {
 }
 
 enum ToggleKey {
+    static let sendTextUsage = UInt16(kHIDUsage_KeyboardF16)
     static let remoteModeUsage = UInt16(kHIDUsage_KeyboardF19)
     static let jitterModeUsage = UInt16(kHIDUsage_KeyboardF18)
     static let targetUsages = [
@@ -111,7 +113,7 @@ enum ToggleKey {
         UInt16(kHIDUsage_KeyboardF14),
         UInt16(kHIDUsage_KeyboardF15)
     ]
-    static let usages: Set<UInt16> = Set(targetUsages + [remoteModeUsage, jitterModeUsage])
+    static let usages: Set<UInt16> = Set(targetUsages + [sendTextUsage, remoteModeUsage, jitterModeUsage])
 
     static func isToggleUsage(_ usage: UInt16) -> Bool {
         usages.contains(usage)

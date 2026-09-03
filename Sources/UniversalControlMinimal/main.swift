@@ -30,6 +30,7 @@ do {
     }
     print("Toggle remote mode with F19.")
     print("Select remote targets with F13, F14, and F15.")
+    print("Send clipboard text to the focused field on the selected receiver with F16.")
     print("Toggle jitter mode with F18.")
     print("Grant Input Monitoring and Accessibility permissions if events are missing or suppression does not work.")
 

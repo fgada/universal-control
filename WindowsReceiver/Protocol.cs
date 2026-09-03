@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 
 namespace UniversalControlWindowsReceiver;
 
@@ -9,7 +10,8 @@ internal enum PacketKind : byte
     Button = 3,
     Pointer = 4,
     Wheel = 5,
-    Sync = 6
+    Sync = 6,
+    Text = 7
 }
 
 internal readonly record struct KeyPacket(ushort Usage, bool IsDown);
@@ -20,8 +22,10 @@ internal readonly record struct SyncPacket(byte ModifierMask, byte ButtonMask, u
 
 internal static class Protocol
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private const byte Version = 1;
     private const int HeaderLength = 10;
+    private const int MaximumTextBytes = 60 * 1024;
 
     internal static bool TryReadHeader(ReadOnlySpan<byte> packet, out uint sequence, out PacketKind kind, out ReadOnlySpan<byte> payload)
     {
@@ -148,5 +152,25 @@ internal static class Protocol
 
         packet = new SyncPacket(modifierMask, buttonMask, keys);
         return true;
+    }
+
+    internal static bool TryReadText(ReadOnlySpan<byte> payload, out string text)
+    {
+        if (payload.Length > MaximumTextBytes)
+        {
+            text = string.Empty;
+            return false;
+        }
+
+        try
+        {
+            text = StrictUtf8.GetString(payload);
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            text = string.Empty;
+            return false;
+        }
     }
 }

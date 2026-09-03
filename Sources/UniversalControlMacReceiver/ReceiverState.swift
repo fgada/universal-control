@@ -49,6 +49,8 @@ final class ReceiverState {
             injector.sendWheel(deltaY: packet.deltaY, modifierMask: modifierMask)
         case let .sync(packet):
             handleSync(packet)
+        case let .text(text):
+            injector.sendText(text)
         }
     }
 

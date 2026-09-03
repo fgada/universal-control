@@ -173,6 +173,15 @@ internal sealed class ReceiverState
         }
     }
 
+    internal void HandleText(string text)
+    {
+        lock (gate)
+        {
+            injector.SendText(text);
+            Console.WriteLine($"Inserted {System.Text.Encoding.UTF8.GetByteCount(text)} UTF-8 bytes into the focused field.");
+        }
+    }
+
     internal void CheckForSyncTimeout()
     {
         lock (gate)

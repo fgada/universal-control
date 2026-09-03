@@ -1,6 +1,8 @@
 import Foundation
 
 final class PacketEncoder: @unchecked Sendable {
+    static let maximumTextBytes = 60 * 1024
+
     private var sequence: UInt32 = 0
 
     func session(active: Bool) -> Data {
@@ -44,6 +46,14 @@ final class PacketEncoder: @unchecked Sendable {
             for usage in state.pressedKeys.prefix(Int(UInt8.max)) {
                 payload.appendLittleEndian(usage)
             }
+        }
+    }
+
+    func text(_ text: String) -> Data? {
+        let utf8 = Data(text.utf8)
+        guard utf8.count <= Self.maximumTextBytes else { return nil }
+        return packet(kind: .text) { payload in
+            payload.append(utf8)
         }
     }
 

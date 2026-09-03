@@ -19,6 +19,28 @@ internal sealed class InputInjector
     private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventScanCode = 0x0008;
+    private const uint KeyEventUnicode = 0x0004;
+    private const int MaximumUnicodeInputsPerBatch = 256;
+
+    internal void SendText(string text)
+    {
+        var inputs = new List<INPUT>(MaximumUnicodeInputsPerBatch);
+        foreach (var utf16Unit in text)
+        {
+            inputs.Add(CreateUnicodeInput(utf16Unit, isDown: true));
+            inputs.Add(CreateUnicodeInput(utf16Unit, isDown: false));
+            if (inputs.Count >= MaximumUnicodeInputsPerBatch)
+            {
+                Send("text", inputs.ToArray());
+                inputs.Clear();
+            }
+        }
+
+        if (inputs.Count > 0)
+        {
+            Send("text", inputs.ToArray());
+        }
+    }
 
     internal void SendKey(KeyboardMapping mapping, bool isDown)
     {
@@ -156,9 +178,32 @@ internal sealed class InputInjector
         };
     }
 
+    private static INPUT CreateUnicodeInput(char utf16Unit, bool isDown)
+    {
+        return new INPUT
+        {
+            type = InputKeyboard,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = 0,
+                    wScan = utf16Unit,
+                    dwFlags = KeyEventUnicode | (isDown ? 0u : KeyEventKeyUp),
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+    }
+
     private static void Send(string context, INPUT input)
     {
-        var inputs = new[] { input };
+        Send(context, [input]);
+    }
+
+    private static void Send(string context, INPUT[] inputs)
+    {
         var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         if (sent != (uint)inputs.Length)
         {

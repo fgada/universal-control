@@ -7,6 +7,7 @@ enum PacketKind: UInt8 {
     case pointer = 4
     case wheel = 5
     case sync = 6
+    case text = 7
 }
 
 enum SyntheticUsage {
@@ -45,6 +46,7 @@ enum PacketBody: Equatable {
     case pointer(PointerPacket)
     case wheel(WheelPacket)
     case sync(SyncPacket)
+    case text(String)
 }
 
 struct DecodedPacket: Equatable {
@@ -68,6 +70,7 @@ enum PacketDecodingError: Error, Equatable, CustomStringConvertible {
 
 enum ProtocolDecoder {
     private static let headerLength = 10
+    private static let maximumTextBytes = 60 * 1024
 
     static func decode(_ data: Data) throws -> DecodedPacket {
         let bytes = [UInt8](data)
@@ -118,6 +121,13 @@ enum ProtocolDecoder {
                 buttonMask: payload[1],
                 pressedKeys: keys
             ))
+
+        case .text:
+            guard payload.count <= maximumTextBytes,
+                  let text = String(bytes: payload, encoding: .utf8) else {
+                throw PacketDecodingError.malformedPayload(kind)
+            }
+            body = .text(text)
         }
 
         return DecodedPacket(sequence: sequence, body: body)
@@ -144,6 +154,7 @@ private extension PacketKind {
         case .pointer: "pointer"
         case .wheel: "wheel"
         case .sync: "sync"
+        case .text: "text"
         }
     }
 }

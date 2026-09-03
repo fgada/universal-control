@@ -21,6 +21,7 @@ let package = Package(
             name: "UniversalControlMinimal",
             linkerSettings: [
                 .linkedFramework("ApplicationServices"),
+                .linkedFramework("AppKit"),
                 .linkedFramework("Network"),
                 .linkedFramework("IOKit"),
                 .linkedFramework("CoreFoundation")

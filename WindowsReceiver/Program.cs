@@ -120,6 +120,17 @@ internal static class Program
                             Console.Error.WriteLine("Ignoring malformed sync packet.");
                         }
                         break;
+
+                    case PacketKind.Text:
+                        if (Protocol.TryReadText(payload, out var text))
+                        {
+                            receiverState.HandleText(text);
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("Ignoring malformed text packet.");
+                        }
+                        break;
                 }
             }
         }

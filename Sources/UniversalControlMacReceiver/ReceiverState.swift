@@ -121,7 +121,12 @@ final class ReceiverState {
         let isAlreadyDown = buttonMask & bit != 0
         guard isAlreadyDown != packet.isDown else { return }
 
-        injector.sendButton(packet.button, isDown: packet.isDown, modifierMask: modifierMask)
+        injector.sendButton(
+            packet.button,
+            isDown: packet.isDown,
+            clickCount: packet.clickCount,
+            modifierMask: modifierMask
+        )
         if packet.isDown {
             buttonMask |= bit
         } else {
@@ -151,7 +156,11 @@ final class ReceiverState {
     private func syncButtons(to desiredMask: UInt8) {
         for button in UInt8(1)...UInt8(3) {
             guard let bit = Self.buttonMaskBit(for: button) else { continue }
-            handleButton(ButtonPacket(button: button, isDown: desiredMask & bit != 0))
+            handleButton(ButtonPacket(
+                button: button,
+                isDown: desiredMask & bit != 0,
+                clickCount: 1
+            ))
         }
     }
 
@@ -195,7 +204,7 @@ final class ReceiverState {
 
         for button in UInt8(1)...UInt8(3) {
             guard let bit = Self.buttonMaskBit(for: button), buttonMask & bit != 0 else { continue }
-            injector.sendButton(button, isDown: false, modifierMask: modifierMask)
+            injector.sendButton(button, isDown: false, clickCount: 1, modifierMask: modifierMask)
         }
         buttonMask = 0
     }

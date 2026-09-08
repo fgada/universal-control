@@ -122,7 +122,7 @@ final class InputInjector {
         event.post(tap: .cghidEventTap)
     }
 
-    func sendButton(_ button: UInt8, isDown: Bool, modifierMask: UInt8) {
+    func sendButton(_ button: UInt8, isDown: Bool, clickCount: UInt8, modifierMask: UInt8) {
         guard let mapping = mouseButtonMapping(button: button, isDown: isDown) else { return }
 
         let currentLocation = CGEvent(source: eventSource)?.location ?? .zero
@@ -137,7 +137,7 @@ final class InputInjector {
         }
 
         event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
-        event.setIntegerValueField(.mouseEventClickState, value: 1)
+        event.setIntegerValueField(.mouseEventClickState, value: Int64(max(clickCount, 1)))
         event.post(tap: .cghidEventTap)
     }
 

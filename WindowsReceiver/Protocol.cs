@@ -91,7 +91,9 @@ internal static class Protocol
     internal static bool TryReadButton(ReadOnlySpan<byte> payload, out ButtonPacket packet)
     {
         packet = default;
-        if (payload.Length != 2)
+        // The optional third byte carries the macOS click count. Windows
+        // derives multi-click state from the injected down/up stream itself.
+        if (payload.Length is not (2 or 3))
         {
             return false;
         }

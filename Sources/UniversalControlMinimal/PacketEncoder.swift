@@ -19,10 +19,11 @@ final class PacketEncoder: @unchecked Sendable {
         }
     }
 
-    func button(_ button: UInt8, isDown: Bool) -> Data {
+    func button(_ button: UInt8, isDown: Bool, clickCount: UInt8 = 1) -> Data {
         packet(kind: .button) { payload in
             payload.append(button)
             payload.append(isDown ? 1 : 0)
+            payload.append(max(clickCount, 1))
         }
     }
 

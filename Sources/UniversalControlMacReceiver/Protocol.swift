@@ -23,6 +23,7 @@ struct KeyPacket: Equatable {
 struct ButtonPacket: Equatable {
     let button: UInt8
     let isDown: Bool
+    let clickCount: UInt8
 }
 
 struct PointerPacket: Equatable {
@@ -98,8 +99,14 @@ enum ProtocolDecoder {
             body = .key(KeyPacket(usage: readUInt16(payload, at: 0), isDown: payload[2] != 0))
 
         case .button:
-            guard payload.count == 2 else { throw PacketDecodingError.malformedPayload(kind) }
-            body = .button(ButtonPacket(button: payload[0], isDown: payload[1] != 0))
+            guard payload.count == 2 || payload.count == 3 else {
+                throw PacketDecodingError.malformedPayload(kind)
+            }
+            body = .button(ButtonPacket(
+                button: payload[0],
+                isDown: payload[1] != 0,
+                clickCount: payload.count == 3 ? max(payload[2], 1) : 1
+            ))
 
         case .pointer:
             guard payload.count == 4 else { throw PacketDecodingError.malformedPayload(kind) }

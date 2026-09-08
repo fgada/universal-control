@@ -158,11 +158,11 @@ final class RemoteModeController: @unchecked Sendable {
         sendSync()
     }
 
-    private func handleButton(button: UInt8, isDown: Bool) {
+    private func handleButton(button: UInt8, isDown: Bool, clickCount: UInt8 = 1) {
         updatePhysicalButtonState(button: button, isDown: isDown)
 
         guard mode == .remote else { return }
-        sender.send(packetEncoder.button(button, isDown: isDown))
+        sender.send(packetEncoder.button(button, isDown: isDown, clickCount: clickCount))
     }
 
     private func handleCapturedPointerMotion(_ event: CGEvent) {
@@ -188,7 +188,9 @@ final class RemoteModeController: @unchecked Sendable {
             return
         }
 
-        handleButton(button: button, isDown: isDown)
+        let rawClickCount = event.getIntegerValueField(.mouseEventClickState)
+        let clickCount = UInt8(clamping: max(rawClickCount, 1))
+        handleButton(button: button, isDown: isDown, clickCount: clickCount)
     }
 
     private func handleCapturedScroll(_ event: CGEvent) {

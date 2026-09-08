@@ -238,6 +238,8 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - `7`: text（UTF-8、最大60 KiB）
 - `8`: gesture（シリアライズしたmacOS Quartzイベント、最大60 KiB）
 
+`button` payloadはボタン番号、down/up、クリック回数です。receiverは旧形式のクリック回数なしpayloadもシングルクリックとして受理します。Windows receiverはクリック回数をOS側で判定するため、3番目の値を使用しません。
+
 `sync`は200msごとに送られます。receiver側は300msを超えて途切れるとstuck key / stuck buttonを解放し、その後5分まではsessionを維持したままresyncを待ちます。`sync`が戻れば自動復帰し、5分を超えて戻らなければsessionを放棄します。
 
 ## Operational Notes

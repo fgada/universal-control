@@ -41,11 +41,12 @@ final class JitterModeController: @unchecked Sendable {
         enabled
     }
 
-    func toggle() -> Bool {
-        enabled.toggle()
+    func setEnabled(_ isEnabled: Bool) {
+        guard enabled != isEnabled else { return }
+
+        enabled = isEnabled
         pendingSteps.removeAll(keepingCapacity: true)
         ticksUntilNextAction = enabled ? randomIdleTicks() : 0
-        return enabled
     }
 
     private func handleTick() {

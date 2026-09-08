@@ -226,7 +226,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func toggleRemoteMode() {
-        let wasTransportActive = isTransportActive
+        let wasTransportActive = isTransportActive(for: selectedTargetIndex)
 
         switch mode {
         case .local:
@@ -243,7 +243,10 @@ final class RemoteModeController: @unchecked Sendable {
             print("Remote mode disabled")
         }
 
-        updateTransportSession(previouslyActive: wasTransportActive)
+        updateTransportSession(
+            for: selectedTargetIndex,
+            previouslyActive: wasTransportActive
+        )
     }
 
     private func sendClipboardText() {
@@ -269,32 +272,21 @@ final class RemoteModeController: @unchecked Sendable {
             return
         }
 
-        let wasTransportActive = isTransportActive
         let targetChanged = selectedTargetIndex != targetIndex
-
-        if targetChanged, wasTransportActive {
-            if jitterController.isEnabled {
-                jitterTargetIndices.insert(selectedTargetIndex)
-                sender.send(
-                    packetEncoder.sync(state: .empty),
-                    toTargetAt: selectedTargetIndex
-                )
-            } else {
-                sender.send(
-                    packetEncoder.session(active: false),
-                    toTargetAt: selectedTargetIndex
-                )
-            }
-        }
+        let previousTargetIndex = selectedTargetIndex
+        let wasPreviousTargetActive = isTransportActive(for: previousTargetIndex)
+        let wasNewTargetActive = isTransportActive(for: targetIndex)
 
         if targetChanged {
             clearPointerState()
             pendingWheelLinesY = 0
             guard sender.selectTarget(at: targetIndex) else { return }
             selectedTargetIndex = targetIndex
-            if jitterController.isEnabled {
-                jitterTargetIndices.insert(targetIndex)
-            }
+
+            updateTransportSession(
+                for: previousTargetIndex,
+                previouslyActive: wasPreviousTargetActive
+            )
         }
 
         if mode == .local {
@@ -307,10 +299,10 @@ final class RemoteModeController: @unchecked Sendable {
 
         print("Remote target selected: F\(13 + targetIndex) -> \(targetHost)")
 
-        if !wasTransportActive || targetChanged {
-            sender.send(packetEncoder.session(active: true))
-        }
-        sendAllSyncs()
+        updateTransportSession(
+            for: targetIndex,
+            previouslyActive: wasNewTargetActive
+        )
     }
 
     private func reloadInputConfiguration() {
@@ -332,25 +324,25 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func toggleJitterMode() {
-        let wasTransportActive = isTransportActive
-        let isEnabled = jitterController.toggle()
-        clearJitterPointerState()
+        let targetIndex = selectedTargetIndex
+        let wasTransportActive = isTransportActive(for: targetIndex)
+        let isEnabled: Bool
 
-        if isEnabled {
-            jitterTargetIndices.insert(selectedTargetIndex)
+        if jitterTargetIndices.remove(targetIndex) != nil {
+            isEnabled = false
         } else {
-            let stoppedTargetIndices = jitterTargetIndices
-            jitterTargetIndices.removeAll()
-            for targetIndex in stoppedTargetIndices where targetIndex != selectedTargetIndex {
-                sender.send(
-                    packetEncoder.session(active: false),
-                    toTargetAt: targetIndex
-                )
-            }
+            jitterTargetIndices.insert(targetIndex)
+            isEnabled = true
         }
 
-        print("Jitter mode \(isEnabled ? "enabled" : "disabled")")
-        updateTransportSession(previouslyActive: wasTransportActive)
+        clearJitterPointerState(for: targetIndex)
+        jitterController.setEnabled(!jitterTargetIndices.isEmpty)
+
+        print("Jitter mode for F\(13 + targetIndex) \(isEnabled ? "enabled" : "disabled")")
+        updateTransportSession(
+            for: targetIndex,
+            previouslyActive: wasTransportActive
+        )
     }
 
     private func flushPointerIfNeeded() {
@@ -369,12 +361,14 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private func sendSyncIfNeeded() {
-        guard isTransportActive else { return }
+        guard hasActiveTransport else { return }
         sendAllSyncs()
     }
 
     private func sendAllSyncs() {
-        sendSync()
+        if isTransportActive(for: selectedTargetIndex) {
+            sendSync()
+        }
         let jitterOnlyTargets = jitterTargetIndices.subtracting([selectedTargetIndex])
         guard !jitterOnlyTargets.isEmpty else { return }
         sender.send(
@@ -439,33 +433,56 @@ final class RemoteModeController: @unchecked Sendable {
         }
     }
 
-    private var isTransportActive: Bool {
-        mode == .remote || jitterController.isEnabled
+    private var hasActiveTransport: Bool {
+        mode == .remote || !jitterTargetIndices.isEmpty
+    }
+
+    private func isTransportActive(for targetIndex: Int) -> Bool {
+        (mode == .remote && targetIndex == selectedTargetIndex)
+            || jitterTargetIndices.contains(targetIndex)
     }
 
     private var activeInputProfile: InputProfile {
         inputConfiguration.profile(forTargetIndex: selectedTargetIndex)
     }
 
-    private func updateTransportSession(previouslyActive: Bool) {
-        let isActive = isTransportActive
+    private func updateTransportSession(for targetIndex: Int, previouslyActive: Bool) {
+        let isActive = isTransportActive(for: targetIndex)
 
         switch (previouslyActive, isActive) {
         case (false, true):
-            sender.send(packetEncoder.session(active: true))
-            sendAllSyncs()
+            sender.send(
+                packetEncoder.session(active: true),
+                toTargetAt: targetIndex
+            )
+            sendSync(toTargetAt: targetIndex)
 
         case (true, true):
-            sendAllSyncs()
+            sendSync(toTargetAt: targetIndex)
 
         case (true, false):
-            clearPointerState()
-            pendingWheelLinesY = 0
-            sender.send(packetEncoder.session(active: false))
+            if targetIndex == selectedTargetIndex {
+                clearPointerState()
+                pendingWheelLinesY = 0
+            }
+            sender.send(
+                packetEncoder.session(active: false),
+                toTargetAt: targetIndex
+            )
 
         case (false, false):
             break
         }
+    }
+
+    private func sendSync(toTargetAt targetIndex: Int) {
+        let state = mode == .remote && targetIndex == selectedTargetIndex
+            ? makeSyncState()
+            : .empty
+        sender.send(
+            packetEncoder.sync(state: state),
+            toTargetAt: targetIndex
+        )
     }
 
     private func enqueuePointerDelta(dx: Int16, dy: Int16) {
@@ -534,9 +551,9 @@ final class RemoteModeController: @unchecked Sendable {
         pointerDYRemainder = 0
     }
 
-    private func clearJitterPointerState() {
-        jitterDXRemainders.removeAll()
-        jitterDYRemainders.removeAll()
+    private func clearJitterPointerState(for targetIndex: Int) {
+        jitterDXRemainders.removeValue(forKey: targetIndex)
+        jitterDYRemainders.removeValue(forKey: targetIndex)
     }
 
     private func buttonMaskBit(for button: UInt8) -> UInt8? {

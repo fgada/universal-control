@@ -1,9 +1,9 @@
 # Universal Control Minimal
 
-macOSの入力をUDPでmacOS / Windows / Ubuntuへ転送する、最小構成のUniversal Control風プロトタイプです。
+macOSの入力をUDPでmacOS / Windowsへ転送する、最小構成のUniversal Control風プロトタイプです。
 
 - macOS sender / receiverはSwift CLI
-- Windows receiverは.NET 8 CLI、Ubuntu receiverはC11
+- Windows receiverは.NET 8 CLI
 - 同一 LAN の最大3台のreceiverをファンクションキーで切り替え
 - 手動トグルでリモート入力を開始 / 停止
 - `F18`で人が微調整したようなジッター移動をreceiver側へ送信
@@ -38,13 +38,11 @@ v1 では次は未対応です。
   macOS receiver
 - `WindowsReceiver/`
   Windows receiver
-- `LinuxReceiver/`
-  Ubuntu/Linux receiver written in C
 
 ## How It Works
 
 macOS 側はキーボードを `IOHIDManager` で受け、押下状態を UDP で送ります。ポインタ系は `CGEventTap` で受けつつローカルイベントも suppress します。  
-receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、Ubuntuでは`uinput`で注入します。押下中キーはreceiver側でも追跡し、key repeatします。
+receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`で注入します。押下中キーはreceiver側でも追跡し、key repeatします。
 
 トグルキーは次です。
 
@@ -74,14 +72,6 @@ receiverはUDPを受信し、macOSでは`CGEvent`、Windowsでは`SendInput`、U
 - Windows 10 / 11
 - .NET 8 SDK
 
-### Ubuntu
-
-- Ubuntu 22.04以降（Ubuntu 26.04を含む）
-- C11 compiler
-- Linux `uinput` headers
-- `/dev/uinput`への書き込み権限
-- テキスト入力用にWaylandでは`wtype`、X11では`xdotool`
-
 ## Build
 
 ### macOS sender / receiver
@@ -98,15 +88,6 @@ Windows で実行します。
 dotnet build .\WindowsReceiver\UniversalControlWindowsReceiver.csproj
 ```
 
-### Ubuntu receiver
-
-ビルド時の外部ライブラリは使用しません。C標準ライブラリ、POSIX API、Linux標準ヘッダーだけでビルドします。
-
-```bash
-make -C LinuxReceiver
-```
-
-
 ## Run
 
 ### 1. receiverを起動
@@ -121,23 +102,6 @@ macOS:
 
 ```bash
 swift run universal-control-mac-receiver --listen-port 50001
-```
-
-Ubuntu:
-
-```bash
-sudo modprobe uinput # 再起動時のみ
-./LinuxReceiver/universal-control-receiver --listen-port 50001
-```
-
-`/dev/uinput`を開けない場合は、Ubuntu側でモジュールと権限を設定してください。設定後は再ログインが必要です。
-
-```bash
-sudo modprobe uinput
-echo 'KERNEL=="uinput", GROUP=="input", MODE="0660", OPTIONS+="static_node=uinput"' | sudo tee /etc/udev/rules.d/99-uinput.rules
-sudo usermod -aG input "$USER"
-sudo udevadm control --reload-rules
-sudo udevadm trigger
 ```
 
 省略時の既定ポートは `50001` です。
@@ -280,7 +244,6 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - ポインタ移動だけ 1ms 単位で coalescing します。
 - キー、ボタン、ホイールは即時送信します。
 - Windows 側は標準権限アプリ向けです。
-- Ubuntu receiverの通常入力はカーネルの`uinput`を使用します。Unicodeテキストの直接入力だけは、Waylandでは`wtype`、X11では`xdotool`を実行します。
 
 ## Known Limitations
 
@@ -307,12 +270,6 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - Windows Firewall で UDP `50001` を許可してください。
 - sender の `--target-host` が Windows の IP になっているか確認してください。
 - receiver を通常権限アプリ上で試してください。
-
-### Ubuntu で入力されない
-
-- `ls -l /dev/uinput`でデバイスと権限を確認してください。
-- `id`で現在のログインセッションに`input`グループが反映されているか確認してください。
-- firewallを使用している場合はUDP `50001`を許可してください。
 
 ## Next Steps
 

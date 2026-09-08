@@ -11,7 +11,8 @@ internal enum PacketKind : byte
     Pointer = 4,
     Wheel = 5,
     Sync = 6,
-    Text = 7
+    Text = 7,
+    Gesture = 8
 }
 
 internal readonly record struct KeyPacket(ushort Usage, bool IsDown);

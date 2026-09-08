@@ -3,10 +3,16 @@ import ApplicationServices
 struct MacKeyMapping {
     let keyCode: CGKeyCode
     let addsFunctionFlag: Bool
+    let addsNumericPadFlag: Bool
 
-    init(_ keyCode: CGKeyCode, addsFunctionFlag: Bool = false) {
+    init(
+        _ keyCode: CGKeyCode,
+        addsFunctionFlag: Bool = false,
+        addsNumericPadFlag: Bool = false
+    ) {
         self.keyCode = keyCode
         self.addsFunctionFlag = addsFunctionFlag
+        self.addsNumericPadFlag = addsNumericPadFlag
     }
 }
 
@@ -39,11 +45,25 @@ enum HIDUsageMapper {
         0x4D: .init(0x77), 0x4E: .init(0x79), 0x4F: .init(0x7C), 0x50: .init(0x7B),
         0x51: .init(0x7D), 0x52: .init(0x7E),
 
-        0x53: .init(0x47), 0x54: .init(0x4B), 0x55: .init(0x43), 0x56: .init(0x4E),
-        0x57: .init(0x45), 0x58: .init(0x4C), 0x59: .init(0x53), 0x5A: .init(0x54),
-        0x5B: .init(0x55), 0x5C: .init(0x56), 0x5D: .init(0x57), 0x5E: .init(0x58),
-        0x5F: .init(0x59), 0x60: .init(0x5B), 0x61: .init(0x5C), 0x62: .init(0x52),
-        0x63: .init(0x41), 0x64: .init(0x0A), 0x67: .init(0x51),
+        0x53: .init(0x47, addsNumericPadFlag: true),
+        0x54: .init(0x4B, addsNumericPadFlag: true),
+        0x55: .init(0x43, addsNumericPadFlag: true),
+        0x56: .init(0x4E, addsNumericPadFlag: true),
+        0x57: .init(0x45, addsNumericPadFlag: true),
+        0x58: .init(0x4C, addsNumericPadFlag: true),
+        0x59: .init(0x53, addsNumericPadFlag: true),
+        0x5A: .init(0x54, addsNumericPadFlag: true),
+        0x5B: .init(0x55, addsNumericPadFlag: true),
+        0x5C: .init(0x56, addsNumericPadFlag: true),
+        0x5D: .init(0x57, addsNumericPadFlag: true),
+        0x5E: .init(0x58, addsNumericPadFlag: true),
+        0x5F: .init(0x59, addsNumericPadFlag: true),
+        0x60: .init(0x5B, addsNumericPadFlag: true),
+        0x61: .init(0x5C, addsNumericPadFlag: true),
+        0x62: .init(0x52, addsNumericPadFlag: true),
+        0x63: .init(0x41, addsNumericPadFlag: true),
+        0x64: .init(0x0A),
+        0x67: .init(0x51, addsNumericPadFlag: true),
 
         0x68: .init(0x69), 0x69: .init(0x6B), 0x6A: .init(0x71), 0x6B: .init(0x6A),
         0x6C: .init(0x40), 0x6D: .init(0x4F), 0x6E: .init(0x50), 0x6F: .init(0x5A),

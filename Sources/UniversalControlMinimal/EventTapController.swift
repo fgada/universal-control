@@ -55,8 +55,11 @@ final class EventTapController: @unchecked Sendable {
             .scrollWheel
         ]
 
-        let mask = events.reduce(CGEventMask(0)) { partialResult, eventType in
+        var mask = events.reduce(CGEventMask(0)) { partialResult, eventType in
             partialResult | (CGEventMask(1) << eventType.rawValue)
+        }
+        for rawValue in MacGestureEventType.all {
+            mask |= CGEventMask(1) << rawValue
         }
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
@@ -113,6 +116,17 @@ final class EventTapController: @unchecked Sendable {
         }
 
         return Unmanaged.passUnretained(event)
+    }
+}
+
+enum MacGestureEventType {
+    // AppKit gesture event values are intentionally absent from CGEventType even
+    // though Quartz event taps deliver them with these NSEvent-compatible values.
+    static let all: [UInt32] = [18, 19, 20, 29, 30, 31, 32]
+    private static let values = Set(all)
+
+    static func contains(_ type: CGEventType) -> Bool {
+        values.contains(type.rawValue)
     }
 }
 

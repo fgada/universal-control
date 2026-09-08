@@ -131,6 +131,11 @@ internal static class Program
                             Console.Error.WriteLine("Ignoring malformed text packet.");
                         }
                         break;
+
+                    case PacketKind.Gesture:
+                        // Gesture payloads contain a serialized macOS CGEvent and are
+                        // intentionally supported only by the macOS receiver.
+                        break;
                 }
             }
         }

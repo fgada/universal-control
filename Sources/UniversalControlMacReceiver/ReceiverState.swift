@@ -51,6 +51,9 @@ final class ReceiverState {
             handleSync(packet)
         case let .text(text):
             injector.sendText(text)
+        case let .gesture(data):
+            guard sessionActive, !awaitingResync else { return }
+            injector.sendGesture(data, modifierMask: modifierMask)
         }
     }
 

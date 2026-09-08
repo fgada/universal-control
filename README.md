@@ -21,12 +21,14 @@ macOSの入力をUDPでmacOS / Windowsへ転送する、最小構成のUniversal
 - 左 / 右 / 中クリック
 - 縦スクロール
 - Magic Trackpad の移動 / タップ / クリック / ドラッグ / 二本指縦スクロール
+- テンキー（数字、演算子、Enter、Num Lock / Clear）
+- Magic Mouse / Magic Trackpad のジェスチャー（macOS receiverのみ）
 
 v1 では次は未対応です。
 
 - 画面端による自動切替
 - 水平スクロール
-- トラックパッド gesture
+- Windows receiverでのMagic Mouse / Magic Trackpadジェスチャー
 - 接続自動発見
 - 認証 / 暗号化
 
@@ -234,6 +236,7 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - `5`: wheel
 - `6`: sync
 - `7`: text（UTF-8、最大60 KiB）
+- `8`: gesture（シリアライズしたmacOS Quartzイベント、最大60 KiB）
 
 `sync`は200msごとに送られます。receiver側は300msを超えて途切れるとstuck key / stuck buttonを解放し、その後5分まではsessionを維持したままresyncを待ちます。`sync`が戻れば自動復帰し、5分を超えて戻らなければsessionを放棄します。
 

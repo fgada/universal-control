@@ -9,6 +9,7 @@ enum PacketKind: UInt8 {
     case wheel = 5
     case sync = 6
     case text = 7
+    case gesture = 8
 }
 
 struct ModifierState: OptionSet, CustomStringConvertible, Sendable {

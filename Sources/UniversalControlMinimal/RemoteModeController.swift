@@ -80,6 +80,11 @@ final class RemoteModeController: @unchecked Sendable {
 
     func handleCapturedEvent(type: CGEventType, event: CGEvent) {
         queue.sync {
+            if MacGestureEventType.contains(type) {
+                handleCapturedGesture(event)
+                return
+            }
+
             switch type {
             case .mouseMoved,
                  .leftMouseDragged,
@@ -193,6 +198,21 @@ final class RemoteModeController: @unchecked Sendable {
         guard deltaY != 0 else { return }
 
         sendScaledWheel(deltaY: deltaY)
+    }
+
+    private func handleCapturedGesture(_ event: CGEvent) {
+        guard mode == .remote else { return }
+        guard let serialized = event.data else {
+            fputs("Failed to serialize gesture event.\n", stderr)
+            return
+        }
+
+        let eventData = serialized as Data
+        guard let packet = packetEncoder.gesture(eventData) else {
+            fputs("Gesture event exceeds \(PacketEncoder.maximumGestureBytes) bytes; not sent.\n", stderr)
+            return
+        }
+        sender.send(packet)
     }
 
     private func rawScrollLines(from event: CGEvent) -> Double {
@@ -546,6 +566,10 @@ private enum ToggleKeyCode {
 
 private extension CGEventType {
     var isRemoteSuppressed: Bool {
+        if MacGestureEventType.contains(self) {
+            return true
+        }
+
         switch self {
         case .keyDown,
              .keyUp,

@@ -2,6 +2,7 @@ import Foundation
 
 final class PacketEncoder: @unchecked Sendable {
     static let maximumTextBytes = 60 * 1024
+    static let maximumGestureBytes = 60 * 1024
 
     private var sequence: UInt32 = 0
 
@@ -54,6 +55,13 @@ final class PacketEncoder: @unchecked Sendable {
         guard utf8.count <= Self.maximumTextBytes else { return nil }
         return packet(kind: .text) { payload in
             payload.append(utf8)
+        }
+    }
+
+    func gesture(_ eventData: Data) -> Data? {
+        guard !eventData.isEmpty, eventData.count <= Self.maximumGestureBytes else { return nil }
+        return packet(kind: .gesture) { payload in
+            payload.append(eventData)
         }
     }
 

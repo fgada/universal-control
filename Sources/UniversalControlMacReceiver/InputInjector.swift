@@ -4,6 +4,7 @@ import Foundation
 
 final class InputInjector {
     private static let maximumUTF16UnitsPerTextEvent = 20
+    private static let allowedGestureEventTypes: Set<UInt32> = [18, 19, 20, 29, 30, 31, 32]
     private let eventSource = CGEventSource(stateID: .hidSystemState)
 
     func sendText(_ text: String) {
@@ -158,10 +159,32 @@ final class InputInjector {
         event.post(tap: .cghidEventTap)
     }
 
+    func sendGesture(_ data: Data, modifierMask: UInt8) {
+        guard let event = CGEvent(withDataAllocator: kCFAllocatorDefault, data: data as CFData) else {
+            fputs("Failed to restore gesture event.\n", stderr)
+            return
+        }
+        guard Self.allowedGestureEventTypes.contains(event.type.rawValue) else {
+            fputs("Ignoring non-gesture event in gesture packet.\n", stderr)
+            return
+        }
+
+        if let currentEvent = CGEvent(source: eventSource) {
+            event.location = currentEvent.location
+            event.timestamp = currentEvent.timestamp
+        }
+        event.setSource(eventSource)
+        event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
+        event.post(tap: .cghidEventTap)
+    }
+
     private func flags(modifierMask: UInt8, mapping: MacKeyMapping, isDown: Bool) -> CGEventFlags {
         var eventFlags = HIDUsageMapper.eventFlags(for: modifierMask)
         if mapping.addsFunctionFlag, isDown {
             eventFlags.insert(.maskSecondaryFn)
+        }
+        if mapping.addsNumericPadFlag {
+            eventFlags.insert(.maskNumericPad)
         }
         return eventFlags
     }

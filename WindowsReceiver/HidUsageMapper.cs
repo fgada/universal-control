@@ -1,6 +1,10 @@
 namespace UniversalControlWindowsReceiver;
 
-internal readonly record struct KeyboardMapping(ushort Code, bool Extended, bool UsesVirtualKey = false);
+internal readonly record struct KeyboardMapping(
+    ushort Code,
+    bool Extended,
+    bool UsesVirtualKey = false,
+    bool RequiresNumLock = false);
 
 internal static class HidUsageMapper
 {
@@ -89,19 +93,20 @@ internal static class HidUsageMapper
         [0x56] = new(0x4A, false),
         [0x57] = new(0x4E, false),
         [0x58] = new(0x1C, true),
-        [0x59] = new(0x4F, false),
-        [0x5A] = new(0x50, false),
-        [0x5B] = new(0x51, false),
-        [0x5C] = new(0x4B, false),
-        [0x5D] = new(0x4C, false),
-        [0x5E] = new(0x4D, false),
-        [0x5F] = new(0x47, false),
-        [0x60] = new(0x48, false),
-        [0x61] = new(0x49, false),
-        [0x62] = new(0x52, false),
-        [0x63] = new(0x53, false),
+        [0x59] = new(0x4F, false, RequiresNumLock: true),
+        [0x5A] = new(0x50, false, RequiresNumLock: true),
+        [0x5B] = new(0x51, false, RequiresNumLock: true),
+        [0x5C] = new(0x4B, false, RequiresNumLock: true),
+        [0x5D] = new(0x4C, false, RequiresNumLock: true),
+        [0x5E] = new(0x4D, false, RequiresNumLock: true),
+        [0x5F] = new(0x47, false, RequiresNumLock: true),
+        [0x60] = new(0x48, false, RequiresNumLock: true),
+        [0x61] = new(0x49, false, RequiresNumLock: true),
+        [0x62] = new(0x52, false, RequiresNumLock: true),
+        [0x63] = new(0x53, false, RequiresNumLock: true),
         [0x64] = new(0x56, false),
         [0x65] = new(0x5D, true),
+        [0x67] = new(0x59, false),
         [0x8A] = new(0x1C, false, true),
         [0x8B] = new(0x1D, false, true),
         [0xE0] = new(0x1D, false),

@@ -22,6 +22,10 @@ internal sealed class InputInjector
     private const uint KeyEventUnicode = 0x0004;
     private const int MaximumUnicodeInputsPerBatch = 256;
 
+    private const ushort VirtualKeyNumLock = 0x90;
+    private static readonly TimeSpan NumLockSettleTime = TimeSpan.FromMilliseconds(500);
+    private DateTime lastNumLockToggleUtc = DateTime.MinValue;
+
     internal void SendText(string text)
     {
         var inputs = new List<INPUT>(MaximumUnicodeInputsPerBatch);
@@ -44,7 +48,36 @@ internal sealed class InputInjector
 
     internal void SendKey(KeyboardMapping mapping, bool isDown)
     {
+        if (isDown && mapping.RequiresNumLock)
+        {
+            EnsureNumLockOn();
+        }
+
         Send("keyboard", CreateKeyboardInput(mapping, isDown));
+    }
+
+    // Mac keyboards have no Num Lock state, so keypad digits must not turn into
+    // navigation keys when Windows happens to have Num Lock off.
+    private void EnsureNumLockOn()
+    {
+        // The toggle state is updated asynchronously after SendInput; skip the
+        // check briefly so rapid keypresses do not toggle Num Lock back off.
+        var now = DateTime.UtcNow;
+        if (now - lastNumLockToggleUtc < NumLockSettleTime)
+        {
+            return;
+        }
+
+        if ((GetKeyState(VirtualKeyNumLock) & 0x0001) != 0)
+        {
+            return;
+        }
+
+        Send("num lock", [
+            CreateVirtualKeyInput(VirtualKeyNumLock, KeyEventExtendedKey),
+            CreateVirtualKeyInput(VirtualKeyNumLock, KeyEventExtendedKey | KeyEventKeyUp)
+        ]);
+        lastNumLockToggleUtc = now;
     }
 
     internal void SendKeyRepeat(KeyboardMapping mapping)
@@ -178,6 +211,25 @@ internal sealed class InputInjector
         };
     }
 
+    private static INPUT CreateVirtualKeyInput(ushort virtualKey, uint flags)
+    {
+        return new INPUT
+        {
+            type = InputKeyboard,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = virtualKey,
+                    wScan = 0,
+                    dwFlags = flags,
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+    }
+
     private static INPUT CreateUnicodeInput(char utf16Unit, bool isDown)
     {
         return new INPUT
@@ -213,6 +265,9 @@ internal sealed class InputInjector
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport("user32.dll")]
+    private static extern short GetKeyState(int nVirtKey);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT

@@ -31,6 +31,7 @@ let package = Package(
             name: "UniversalControlMacReceiver",
             linkerSettings: [
                 .linkedFramework("ApplicationServices"),
+                .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("Network")
             ]

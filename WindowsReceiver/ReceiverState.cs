@@ -177,8 +177,10 @@ internal sealed class ReceiverState
     {
         lock (gate)
         {
-            injector.SendText(text);
-            Console.WriteLine($"Inserted {System.Text.Encoding.UTF8.GetByteCount(text)} UTF-8 bytes into the focused field.");
+            if (injector.SendText(text))
+            {
+                Console.WriteLine($"Pasted {System.Text.Encoding.UTF8.GetByteCount(text)} UTF-8 bytes into the focused field.");
+            }
         }
     }
 

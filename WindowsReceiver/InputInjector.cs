@@ -19,30 +19,94 @@ internal sealed class InputInjector
     private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
     private const uint KeyEventScanCode = 0x0008;
-    private const uint KeyEventUnicode = 0x0004;
-    private const int MaximumUnicodeInputsPerBatch = 256;
 
     private const ushort VirtualKeyNumLock = 0x90;
+    private const ushort VirtualKeyControl = 0x11;
+    private const ushort VirtualKeyV = 0x56;
+
+    private const uint ClipboardFormatUnicodeText = 13;
+    private const uint GlobalMemoryMoveable = 0x0002;
+    private const int ClipboardOpenAttempts = 10;
+    private static readonly TimeSpan ClipboardRetryDelay = TimeSpan.FromMilliseconds(10);
     private static readonly TimeSpan NumLockSettleTime = TimeSpan.FromMilliseconds(500);
     private DateTime lastNumLockToggleUtc = DateTime.MinValue;
 
-    internal void SendText(string text)
+    // Typing text as KEYEVENTF_UNICODE input drops symbols when an IME is active
+    // or input arrives too quickly, so paste through the clipboard instead.
+    internal bool SendText(string text)
     {
-        var inputs = new List<INPUT>(MaximumUnicodeInputsPerBatch);
-        foreach (var utf16Unit in text)
+        // Text from macOS uses LF line endings; many Windows apps expect CRLF.
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
+        if (!TrySetClipboardText(normalized))
         {
-            inputs.Add(CreateUnicodeInput(utf16Unit, isDown: true));
-            inputs.Add(CreateUnicodeInput(utf16Unit, isDown: false));
-            if (inputs.Count >= MaximumUnicodeInputsPerBatch)
+            Console.Error.WriteLine($"Failed to write text to the clipboard: {Marshal.GetLastWin32Error()}");
+            return false;
+        }
+
+        Send("paste", [
+            CreateVirtualKeyInput(VirtualKeyControl, 0),
+            CreateVirtualKeyInput(VirtualKeyV, 0),
+            CreateVirtualKeyInput(VirtualKeyV, KeyEventKeyUp),
+            CreateVirtualKeyInput(VirtualKeyControl, KeyEventKeyUp)
+        ]);
+        return true;
+    }
+
+    private static bool TrySetClipboardText(string text)
+    {
+        // Another process may briefly hold the clipboard open.
+        var opened = false;
+        for (var attempt = 0; attempt < ClipboardOpenAttempts && !opened; attempt++)
+        {
+            opened = OpenClipboard(IntPtr.Zero);
+            if (!opened)
             {
-                Send("text", inputs.ToArray());
-                inputs.Clear();
+                Thread.Sleep(ClipboardRetryDelay);
             }
         }
 
-        if (inputs.Count > 0)
+        if (!opened)
         {
-            Send("text", inputs.ToArray());
+            return false;
+        }
+
+        try
+        {
+            if (!EmptyClipboard())
+            {
+                return false;
+            }
+
+            var byteCount = (text.Length + 1) * sizeof(char);
+            var handle = GlobalAlloc(GlobalMemoryMoveable, (UIntPtr)byteCount);
+            if (handle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            var pointer = GlobalLock(handle);
+            if (pointer == IntPtr.Zero)
+            {
+                GlobalFree(handle);
+                return false;
+            }
+
+            Marshal.Copy(text.ToCharArray(), 0, pointer, text.Length);
+            Marshal.WriteInt16(pointer, text.Length * sizeof(char), 0);
+            GlobalUnlock(handle);
+
+            // The clipboard owns the memory only when SetClipboardData succeeds.
+            if (SetClipboardData(ClipboardFormatUnicodeText, handle) == IntPtr.Zero)
+            {
+                GlobalFree(handle);
+                return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            CloseClipboard();
         }
     }
 
@@ -230,25 +294,6 @@ internal sealed class InputInjector
         };
     }
 
-    private static INPUT CreateUnicodeInput(char utf16Unit, bool isDown)
-    {
-        return new INPUT
-        {
-            type = InputKeyboard,
-            U = new InputUnion
-            {
-                ki = new KEYBDINPUT
-                {
-                    wVk = 0,
-                    wScan = utf16Unit,
-                    dwFlags = KeyEventUnicode | (isDown ? 0u : KeyEventKeyUp),
-                    time = 0,
-                    dwExtraInfo = IntPtr.Zero
-                }
-            }
-        };
-    }
-
     private static void Send(string context, INPUT input)
     {
         Send(context, [input]);
@@ -268,6 +313,30 @@ internal sealed class InputInjector
 
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int nVirtKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint uFlags, UIntPtr dwBytes);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr hMem);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT

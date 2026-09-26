@@ -6,6 +6,12 @@ import Foundation
 final class InputInjector {
     private static let allowedGestureEventTypes: Set<UInt32> = [18, 19, 20, 29, 30, 31, 32]
     private let eventSource = CGEventSource(stateID: .hidSystemState)
+    // The sender is a US keyboard. Tag key events as ANSI so a JIS receiver
+    // translates symbol keys by US positions instead of its built-in JIS layout.
+    private static let ansiKeyboardType: Int64 = 40
+    // JIS-only keys (Yen, Underscore, keypad comma, Eisu, Kana) keep the
+    // receiver's own keyboard type so they still behave as JIS keys.
+    private static let jisOnlyKeyCodes: Set<CGKeyCode> = [0x5D, 0x5E, 0x5F, 0x66, 0x68]
 
     // Typing text as synthetic Unicode key events drops symbols when an IME is
     // active or events arrive too quickly, so paste through the clipboard instead.
@@ -36,6 +42,7 @@ final class InputInjector {
         }
 
         event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: isDown)
+        applyKeyboardType(to: event, mapping: mapping)
         event.post(tap: .cghidEventTap)
     }
 
@@ -69,6 +76,7 @@ final class InputInjector {
 
         event.flags = flags(modifierMask: modifierMask, mapping: mapping, isDown: true)
         event.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        applyKeyboardType(to: event, mapping: mapping)
         event.post(tap: .cghidEventTap)
     }
 
@@ -151,6 +159,11 @@ final class InputInjector {
         event.setSource(eventSource)
         event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
         event.post(tap: .cghidEventTap)
+    }
+
+    private func applyKeyboardType(to event: CGEvent, mapping: MacKeyMapping) {
+        guard !Self.jisOnlyKeyCodes.contains(mapping.keyCode) else { return }
+        event.setIntegerValueField(.keyboardEventKeyboardType, value: Self.ansiKeyboardType)
     }
 
     private func flags(modifierMask: UInt8, mapping: MacKeyMapping, isDown: Bool) -> CGEventFlags {

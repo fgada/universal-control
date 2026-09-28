@@ -11,6 +11,7 @@ final class RemoteModeController: @unchecked Sendable {
     }
 
     private let sender: UDPEventSender
+    private let micController: MicStreamController?
     private var inputConfiguration: InputConfiguration
     private let queue = DispatchQueue(label: "remote.mode.controller.queue", qos: .userInteractive)
     private let packetEncoder = PacketEncoder()
@@ -32,8 +33,9 @@ final class RemoteModeController: @unchecked Sendable {
     private var selectedTargetIndex = 0
     private var jitterTargetIndices: Set<Int> = []
 
-    init(sender: UDPEventSender, inputConfiguration: InputConfiguration) {
+    init(sender: UDPEventSender, inputConfiguration: InputConfiguration, micController: MicStreamController?) {
         self.sender = sender
+        self.micController = micController
         self.inputConfiguration = inputConfiguration
 
         pointerFlushTimer = DispatchSource.makeTimerSource(queue: queue)
@@ -137,6 +139,9 @@ final class RemoteModeController: @unchecked Sendable {
         } else if isDown, usage == ToggleKey.jitterModeUsage {
             toggleSuppressionActive = true
             toggleJitterMode()
+        } else if isDown, usage == ToggleKey.micUsage {
+            toggleSuppressionActive = true
+            toggleMic()
         }
 
         defer { clearToggleSuppressionIfNeeded() }
@@ -345,6 +350,16 @@ final class RemoteModeController: @unchecked Sendable {
             for: targetIndex,
             previouslyActive: wasTransportActive
         )
+    }
+
+    private func toggleMic() {
+        guard let micController else {
+            print("F17: mic streaming is disabled. Start the sender with --audio-token <token>.")
+            return
+        }
+        guard let targetHost = sender.targetHost(at: selectedTargetIndex) else { return }
+
+        micController.toggle(targetIndex: selectedTargetIndex, host: targetHost)
     }
 
     private func flushPointerIfNeeded() {
@@ -578,6 +593,7 @@ private enum ToggleKeyCode {
         CGKeyCode(kVK_F14),
         CGKeyCode(kVK_F15),
         CGKeyCode(kVK_F16),
+        CGKeyCode(kVK_F17),
         CGKeyCode(kVK_F18),
         CGKeyCode(kVK_F19)
     ]

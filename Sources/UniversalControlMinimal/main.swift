@@ -5,7 +5,16 @@ do {
     let options = try CommandLineOptions(arguments: Array(CommandLine.arguments.dropFirst()))
     let inputConfiguration = try InputConfiguration.loadDefault()
     let sender = try UDPEventSender(hosts: options.targetHosts, port: options.targetPort)
-    let remoteModeController = RemoteModeController(sender: sender, inputConfiguration: inputConfiguration)
+    let micController = try options.audioToken.map { token in
+        let server = try AudioWebSocketServer(port: options.audioPort, token: token, targetHosts: options.targetHosts)
+        server.start()
+        return MicStreamController(server: server, voiceProcessing: options.audioVoiceProcessing)
+    }
+    let remoteModeController = RemoteModeController(
+        sender: sender,
+        inputConfiguration: inputConfiguration,
+        micController: micController
+    )
     let eventTapController = EventTapController(remoteModeController: remoteModeController)
 
     guard eventTapController.start() else {
@@ -32,6 +41,9 @@ do {
     print("Select remote targets with F13, F14, and F15.")
     print("Send clipboard text to the focused field on the selected receiver with F16.")
     print("Toggle jitter mode with F18.")
+    if micController != nil {
+        print("Toggle mic streaming to the selected receiver's Chrome extension with F17 (WebSocket port \(options.audioPort)).")
+    }
     print("Grant Input Monitoring and Accessibility permissions if events are missing or suppression does not work.")
 
     receiver.run()

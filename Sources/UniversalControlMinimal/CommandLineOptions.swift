@@ -5,6 +5,7 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
     case missingValue(flag: String)
     case invalidPort(String)
     case tooManyTargetHosts
+    case emptyAudioToken
     case unexpectedArgument(String)
     case helpRequested
 
@@ -18,6 +19,8 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
             return "Invalid port: \(rawValue)."
         case .tooManyTargetHosts:
             return "At most three --target-host values can be specified."
+        case .emptyAudioToken:
+            return "--audio-token must not be empty."
         case let .unexpectedArgument(argument):
             return "Unexpected argument: \(argument)"
         case .helpRequested:
@@ -27,14 +30,23 @@ enum CommandLineOptionsError: Error, CustomStringConvertible {
 }
 
 struct CommandLineOptions {
-    static let usage = "Usage: universal-control-minimal --target-host <host> [--target-host <host> ...] [--target-port <port>]"
+    static let usage = """
+        Usage: universal-control-minimal --target-host <host> [--target-host <host> ...] [--target-port <port>]
+                                         [--audio-token <token> [--audio-port <port>] [--audio-voice-processing]]
+        """
 
     let targetHosts: [String]
     let targetPort: UInt16
+    let audioToken: String?
+    let audioPort: UInt16
+    let audioVoiceProcessing: Bool
 
     init(arguments: [String]) throws {
         var targetHosts: [String] = []
         var targetPort: UInt16 = 50001
+        var audioToken: String?
+        var audioPort: UInt16 = 50002
+        var audioVoiceProcessing = false
 
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
@@ -59,6 +71,27 @@ struct CommandLineOptions {
                 }
                 targetPort = port
 
+            case "--audio-token":
+                guard let value = iterator.next() else {
+                    throw CommandLineOptionsError.missingValue(flag: "--audio-token")
+                }
+                guard !value.isEmpty else {
+                    throw CommandLineOptionsError.emptyAudioToken
+                }
+                audioToken = value
+
+            case "--audio-port":
+                guard let value = iterator.next(), !value.isEmpty else {
+                    throw CommandLineOptionsError.missingValue(flag: "--audio-port")
+                }
+                guard let port = UInt16(value) else {
+                    throw CommandLineOptionsError.invalidPort(value)
+                }
+                audioPort = port
+
+            case "--audio-voice-processing":
+                audioVoiceProcessing = true
+
             case "--help", "-h":
                 throw CommandLineOptionsError.helpRequested
 
@@ -73,5 +106,8 @@ struct CommandLineOptions {
 
         self.targetHosts = targetHosts
         self.targetPort = targetPort
+        self.audioToken = audioToken
+        self.audioPort = audioPort
+        self.audioVoiceProcessing = audioVoiceProcessing
     }
 }

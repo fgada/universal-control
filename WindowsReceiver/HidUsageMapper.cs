@@ -118,7 +118,7 @@ internal static class HidUsageMapper
         [0xE5] = new(0x36, false),
         [0xE6] = new(0x38, true),
         [0xE7] = new(0x5C, true),
-        // Media keys from the sender's function row (synthetic usages).
+        // System function keys from the sender's function row (synthetic usages).
         [0xFF10] = new(0xAF, true, UsesVirtualKey: true), // VK_VOLUME_UP
         [0xFF11] = new(0xAE, true, UsesVirtualKey: true), // VK_VOLUME_DOWN
         [0xFF12] = new(0xAD, true, UsesVirtualKey: true, Repeatable: false), // VK_VOLUME_MUTE

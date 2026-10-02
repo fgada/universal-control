@@ -61,7 +61,7 @@ final class EventTapController: @unchecked Sendable {
         for rawValue in MacGestureEventType.all {
             mask |= CGEventMask(1) << rawValue
         }
-        mask |= CGEventMask(1) << MediaKeyEvent.systemDefinedEventType.rawValue
+        mask |= CGEventMask(1) << SystemFunctionKeyEvent.systemDefinedEventType.rawValue
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(

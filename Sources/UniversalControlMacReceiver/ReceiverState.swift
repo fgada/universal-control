@@ -88,16 +88,16 @@ final class ReceiverState {
             return
         }
 
-        if let mediaKey = HIDUsageMapper.mediaKey(for: packet.usage) {
+        if let systemFunctionKey = HIDUsageMapper.systemFunctionKey(for: packet.usage) {
             if packet.isDown {
                 if pressedKeys.insert(packet.usage).inserted {
-                    injector.sendMediaKey(mediaKey, isDown: true, modifierMask: modifierMask)
-                    if mediaKey.isRepeatable {
+                    injector.sendSystemFunctionKey(systemFunctionKey, isDown: true, modifierMask: modifierMask)
+                    if systemFunctionKey.isRepeatable {
                         handlePressedRepeatableKey(packet.usage)
                     }
                 }
             } else if pressedKeys.remove(packet.usage) != nil {
-                injector.sendMediaKey(mediaKey, isDown: false, modifierMask: modifierMask)
+                injector.sendSystemFunctionKey(systemFunctionKey, isDown: false, modifierMask: modifierMask)
                 handleReleasedRepeatableKey(packet.usage)
             }
             return
@@ -208,8 +208,8 @@ final class ReceiverState {
         repeatablePressedKeysInOrder.removeAll()
 
         for usage in pressedKeys {
-            if let mediaKey = HIDUsageMapper.mediaKey(for: usage) {
-                injector.sendMediaKey(mediaKey, isDown: false, modifierMask: modifierMask)
+            if let systemFunctionKey = HIDUsageMapper.systemFunctionKey(for: usage) {
+                injector.sendSystemFunctionKey(systemFunctionKey, isDown: false, modifierMask: modifierMask)
                 continue
             }
             guard let mapping = HIDUsageMapper.mapping(for: usage) else { continue }
@@ -275,8 +275,8 @@ final class ReceiverState {
             return
         }
         guard clock.now >= nextKeyRepeat else { return }
-        if let mediaKey = HIDUsageMapper.mediaKey(for: usage) {
-            injector.sendMediaKey(mediaKey, isDown: true, isRepeat: true, modifierMask: modifierMask)
+        if let systemFunctionKey = HIDUsageMapper.systemFunctionKey(for: usage) {
+            injector.sendSystemFunctionKey(systemFunctionKey, isDown: true, isRepeat: true, modifierMask: modifierMask)
             self.nextKeyRepeat = clock.now.advanced(by: keyboardRepeatConfiguration.interval)
             return
         }

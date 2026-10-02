@@ -46,9 +46,9 @@ final class InputInjector {
         event.post(tap: .cghidEventTap)
     }
 
-    func sendMediaKey(_ mediaKey: MacMediaKey, isDown: Bool, isRepeat: Bool = false, modifierMask: UInt8) {
+    func sendSystemFunctionKey(_ systemFunctionKey: MacSystemFunctionKey, isDown: Bool, isRepeat: Bool = false, modifierMask: UInt8) {
         let keyState = isDown ? 0x0A : 0x0B
-        let data1 = (mediaKey.keyType << 16) | (keyState << 8) | (isRepeat ? 0x1 : 0)
+        let data1 = (systemFunctionKey.keyType << 16) | (keyState << 8) | (isRepeat ? 0x1 : 0)
         let modifierFlags = NSEvent.ModifierFlags(
             rawValue: UInt(keyState << 8) | UInt(HIDUsageMapper.eventFlags(for: modifierMask).rawValue)
         )
@@ -63,7 +63,7 @@ final class InputInjector {
             data1: data1,
             data2: -1
         )?.cgEvent else {
-            fputs("Failed to create media key event.\n", stderr)
+            fputs("Failed to create system function key event.\n", stderr)
             return
         }
 

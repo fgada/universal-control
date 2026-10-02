@@ -23,7 +23,7 @@ macOSの入力をUDPでmacOS / Windowsへ転送する、最小構成のUniversal
 - 縦スクロール
 - Magic Trackpad の移動 / タップ / クリック / ドラッグ / 二本指縦スクロール
 - テンキー（数字、演算子、Enter、Num Lock / Clear）
-- ファンクションキー列のメディアキー（音量 + / − / ミュート、再生/一時停止、次 / 前の曲）
+- ファンクションキー列のシステム機能キー（音量 + / − / ミュート、再生/一時停止、次 / 前の曲）
 - Magic Mouse / Magic Trackpad のジェスチャー（macOS receiverのみ）
 
 v1 では次は未対応です。
@@ -174,7 +174,7 @@ swift run universal-control-minimal --target-host 192.168.1.25
 
 キー名は `left_command` のような別名か、`0xE3` のような HID usage 値で書けます。
 日本語キーボード系の `henkan` / `muhenkan`、Mac receiver用の `kana_abc_toggle` も指定できます。
-メディアキーは `volume_up` / `volume_down` / `mute` / `play_pause` / `next_track` / `previous_track` で指定できます（例: `"f12": "volume_up"`）。
+システム機能キーは `volume_up` / `volume_down` / `mute` / `play_pause` / `next_track` / `previous_track` で指定できます（例: `"f12": "volume_up"`）。
 `cursor_sensitivity` の既定値は `1.0` です。`1.1` で速く、`0.9` で遅くなります。
 `scroll_sensitivity` の既定値も `1.0` で、`1.1` で多く、`0.9` で少なくスクロールします。
 
@@ -238,9 +238,9 @@ receiver: 拡張のservice worker (WebSocketクライアント) → content scri
 - `--audio-voice-processing`を付けると、macOSの音声処理（ノイズ抑制 / AGC）を有効にします。有効中は他のアプリの音量が下がることがあります。
 - receiverのスピーカー音をsenderのマイクが拾うと、会議の相手にエコーが聞こえます。ヘッドホンを使ってください。
 
-### 7. メディアキーを使う
+### 7. システム機能キーを使う
 
-`F1`〜`F12`の列は、sender側macOSの解釈に従って転送します。システム設定の「F1、F2などのキーを標準のファンクションキーとして使用」がオフ（既定）なら、キーに印字されたメディア機能がreceiverで動き、`fn`を押しながらでF1〜F12として送られます。オンにすると逆になります。
+`F1`〜`F12`の列は、sender側macOSの解釈に従って転送します。システム設定の「F1、F2などのキーを標準のファンクションキーとして使用」がオフ（既定）なら、キーに印字されたシステム機能がreceiverで動き、`fn`を押しながらでF1〜F12として送られます。オンにすると逆になります。
 
 - 音量 + / − / ミュート、再生/一時停止、次 / 前の曲をreceiverへ転送し、sender側では動きません。
 - 画面の明るさとキーボードバックライトはsenderのハードウェア向けなので転送せず、リモート中もsenderで効きます。
@@ -281,7 +281,7 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - `7`: text（UTF-8、最大60 KiB）
 - `8`: gesture（シリアライズしたmacOS Quartzイベント、最大60 KiB）
 
-メディアキーは`key` / `sync`の中で独自usage（`0xFF10`音量+、`0xFF11`音量−、`0xFF12`ミュート、`0xFF13`再生/一時停止、`0xFF14`次の曲、`0xFF15`前の曲）として送ります。
+システム機能キーは`key` / `sync`の中で独自usage（`0xFF10`音量+、`0xFF11`音量−、`0xFF12`ミュート、`0xFF13`再生/一時停止、`0xFF14`次の曲、`0xFF15`前の曲）として送ります。
 
 ### マイク（WebSocket）
 

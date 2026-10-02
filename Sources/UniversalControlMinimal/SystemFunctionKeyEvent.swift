@@ -3,9 +3,10 @@ import ApplicationServices
 import Carbon.HIToolbox
 
 // macOS decides per keyboard model, Fn state, and the "Use F1, F2, etc. keys as
-// standard function keys" setting whether a top-row key is an F-key or a media
-// key. The raw HID usage is always F1-F12, so the function row is read from the
-// event tap instead: F-keys arrive as keyDown/keyUp, media keys as NX_SYSDEFINED.
+// standard function keys" setting whether a top-row key is an F-key or a system
+// function key. The raw HID usage is always F1-F12, so the function row is read
+// from the event tap instead: F-keys arrive as keyDown/keyUp, system function
+// keys as NX_SYSDEFINED.
 enum FunctionKey {
     private static let usagesByKeyCode: [CGKeyCode: UInt16] = [
         CGKeyCode(kVK_F1): UInt16(kHIDUsage_KeyboardF1),
@@ -32,7 +33,7 @@ enum FunctionKey {
     }
 }
 
-struct MediaKeyEvent {
+struct SystemFunctionKeyEvent {
     static let systemDefinedEventType = CGEventType(rawValue: 14)! // NX_SYSDEFINED
     private static let auxControlButtonsSubtype: Int16 = 8 // NX_SUBTYPE_AUX_CONTROL_BUTTONS
 

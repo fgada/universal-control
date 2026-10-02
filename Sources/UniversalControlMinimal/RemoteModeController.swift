@@ -65,7 +65,7 @@ final class RemoteModeController: @unchecked Sendable {
             switch event {
             case let .key(_, usage, isDown, _):
                 // The event tap reports the function row after macOS applies Fn
-                // and media-key translation; see handleCapturedFunctionKey.
+                // and system function key translation; see handleCapturedFunctionKey.
                 guard !FunctionKey.isFunctionRowUsage(usage) else { return }
                 handleKey(usage: usage, isDown: isDown)
 
@@ -89,8 +89,8 @@ final class RemoteModeController: @unchecked Sendable {
                 handleCapturedGesture(event)
                 return
             }
-            if type == MediaKeyEvent.systemDefinedEventType {
-                handleCapturedMediaKey(event)
+            if type == SystemFunctionKeyEvent.systemDefinedEventType {
+                handleCapturedSystemFunctionKey(event)
                 return
             }
 
@@ -124,8 +124,8 @@ final class RemoteModeController: @unchecked Sendable {
     func shouldSuppress(eventType: CGEventType, event: CGEvent) -> Bool {
         queue.sync {
             if mode == .remote {
-                if eventType == MediaKeyEvent.systemDefinedEventType {
-                    return MediaKeyEvent(event) != nil
+                if eventType == SystemFunctionKeyEvent.systemDefinedEventType {
+                    return SystemFunctionKeyEvent(event) != nil
                 }
                 return eventType.isRemoteSuppressed
             }
@@ -190,10 +190,10 @@ final class RemoteModeController: @unchecked Sendable {
         handleKey(usage: usage, isDown: type == .keyDown)
     }
 
-    private func handleCapturedMediaKey(_ event: CGEvent) {
+    private func handleCapturedSystemFunctionKey(_ event: CGEvent) {
         // Receivers generate their own repeats while the key stays pressed.
-        guard let mediaKey = MediaKeyEvent(event), !mediaKey.isRepeat else { return }
-        handleKey(usage: mediaKey.usage, isDown: mediaKey.isDown)
+        guard let systemFunctionKey = SystemFunctionKeyEvent(event), !systemFunctionKey.isRepeat else { return }
+        handleKey(usage: systemFunctionKey.usage, isDown: systemFunctionKey.isDown)
     }
 
     private func handleCapturedPointerMotion(_ event: CGEvent) {

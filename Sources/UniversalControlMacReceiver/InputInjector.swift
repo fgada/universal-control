@@ -108,9 +108,9 @@ final class InputInjector {
         guard dx != 0 || dy != 0 else { return }
 
         let currentLocation = CGEvent(source: eventSource)?.location ?? .zero
-        let targetLocation = CGPoint(
-            x: currentLocation.x + CGFloat(dx),
-            y: currentLocation.y + CGFloat(dy)
+        let targetLocation = Self.clampToDisplay(
+            CGPoint(x: currentLocation.x + CGFloat(dx), y: currentLocation.y + CGFloat(dy)),
+            from: currentLocation
         )
         let drag = dragEvent(for: buttonMask)
         guard let event = CGEvent(
@@ -124,9 +124,29 @@ final class InputInjector {
         }
 
         event.flags = HIDUsageMapper.eventFlags(for: modifierMask)
-        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(dx))
-        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(dy))
+        // macOS keeps accumulating the delta fields past the screen edge, so the
+        // pointer sticks there until the overshoot is undone. Report only the
+        // movement that actually happens on screen.
+        event.setIntegerValueField(.mouseEventDeltaX, value: Int64(targetLocation.x - currentLocation.x))
+        event.setIntegerValueField(.mouseEventDeltaY, value: Int64(targetLocation.y - currentLocation.y))
         event.post(tap: .cghidEventTap)
+    }
+
+    private static func clampToDisplay(_ target: CGPoint, from current: CGPoint) -> CGPoint {
+        var display: CGDirectDisplayID = 0
+        var count: UInt32 = 0
+        if CGGetDisplaysWithPoint(target, 1, &display, &count) == .success, count > 0 {
+            return target
+        }
+        guard CGGetDisplaysWithPoint(current, 1, &display, &count) == .success, count > 0 else {
+            return target
+        }
+
+        let bounds = CGDisplayBounds(display)
+        return CGPoint(
+            x: min(max(target.x, bounds.minX), bounds.maxX - 1),
+            y: min(max(target.y, bounds.minY), bounds.maxY - 1)
+        )
     }
 
     func sendButton(_ button: UInt8, isDown: Bool, clickCount: UInt8, modifierMask: UInt8) {

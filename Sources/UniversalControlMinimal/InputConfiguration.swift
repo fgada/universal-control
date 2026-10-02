@@ -370,6 +370,12 @@ private enum HIDUsageToken {
             SyntheticUsage.kanaABCToggle,
             ["kana_abc_toggle", "kana_english_toggle", "かな英数切替"]
         )
+        register(SyntheticUsage.volumeUp, ["volume_up", "volumeup"])
+        register(SyntheticUsage.volumeDown, ["volume_down", "volumedown"])
+        register(SyntheticUsage.mute, ["mute", "volume_mute"])
+        register(SyntheticUsage.playPause, ["play_pause", "playpause", "play"])
+        register(SyntheticUsage.nextTrack, ["next_track", "nexttrack", "next"])
+        register(SyntheticUsage.previousTrack, ["previous_track", "prev_track", "previous", "prev"])
         register(0x8A, ["henkan", "convert", "ime_convert", "international4", "変換"])
         register(0x8B, ["muhenkan", "nonconvert", "non_convert", "ime_nonconvert", "international5", "無変換"])
 
@@ -418,6 +424,12 @@ private enum HIDUsageToken {
         0xE7: "right_command",
         SyntheticUsage.globe: "globe",
         SyntheticUsage.kanaABCToggle: "kana_abc_toggle",
+        SyntheticUsage.volumeUp: "volume_up",
+        SyntheticUsage.volumeDown: "volume_down",
+        SyntheticUsage.mute: "mute",
+        SyntheticUsage.playPause: "play_pause",
+        SyntheticUsage.nextTrack: "next_track",
+        SyntheticUsage.previousTrack: "previous_track",
         0x8A: "henkan",
         0x8B: "muhenkan"
     ]

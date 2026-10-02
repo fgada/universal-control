@@ -248,7 +248,7 @@ internal sealed class InputInjector
     private static INPUT CreateKeyboardInput(KeyboardMapping mapping, bool isDown)
     {
         var flags = mapping.UsesVirtualKey ? 0u : KeyEventScanCode;
-        if (!mapping.UsesVirtualKey && mapping.Extended)
+        if (mapping.Extended)
         {
             flags |= KeyEventExtendedKey;
         }

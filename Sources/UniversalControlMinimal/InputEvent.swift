@@ -103,6 +103,12 @@ struct RemoteSyncState: Sendable {
 enum SyntheticUsage {
     static let globe = UInt16(0xFF03)
     static let kanaABCToggle = UInt16(0xFF04)
+    static let volumeUp = UInt16(0xFF10)
+    static let volumeDown = UInt16(0xFF11)
+    static let mute = UInt16(0xFF12)
+    static let playPause = UInt16(0xFF13)
+    static let nextTrack = UInt16(0xFF14)
+    static let previousTrack = UInt16(0xFF15)
 }
 
 enum ToggleKey {

@@ -61,6 +61,7 @@ final class EventTapController: @unchecked Sendable {
         for rawValue in MacGestureEventType.all {
             mask |= CGEventMask(1) << rawValue
         }
+        mask |= CGEventMask(1) << MediaKeyEvent.systemDefinedEventType.rawValue
 
         let userInfo = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
@@ -104,14 +105,7 @@ final class EventTapController: @unchecked Sendable {
 
         remoteModeController.handleCapturedEvent(type: type, event: event)
 
-        let keyCode: CGKeyCode?
-        if type == .keyDown || type == .keyUp || type == .flagsChanged {
-            keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        } else {
-            keyCode = nil
-        }
-
-        if remoteModeController.shouldSuppress(eventType: type, keyCode: keyCode) {
+        if remoteModeController.shouldSuppress(eventType: type, event: event) {
             return nil
         }
 

@@ -64,6 +64,9 @@ final class RemoteModeController: @unchecked Sendable {
         queue.sync {
             switch event {
             case let .key(_, usage, isDown, _):
+                // The event tap reports the function row after macOS applies Fn
+                // and media-key translation; see handleCapturedFunctionKey.
+                guard !FunctionKey.isFunctionRowUsage(usage) else { return }
                 handleKey(usage: usage, isDown: isDown)
 
             case let .button(_, button, isDown, _):
@@ -86,8 +89,15 @@ final class RemoteModeController: @unchecked Sendable {
                 handleCapturedGesture(event)
                 return
             }
+            if type == MediaKeyEvent.systemDefinedEventType {
+                handleCapturedMediaKey(event)
+                return
+            }
 
             switch type {
+            case .keyDown, .keyUp:
+                handleCapturedFunctionKey(type: type, event: event)
+
             case .mouseMoved,
                  .leftMouseDragged,
                  .rightMouseDragged,
@@ -111,15 +121,18 @@ final class RemoteModeController: @unchecked Sendable {
         }
     }
 
-    func shouldSuppress(eventType: CGEventType, keyCode: CGKeyCode?) -> Bool {
+    func shouldSuppress(eventType: CGEventType, event: CGEvent) -> Bool {
         queue.sync {
             if mode == .remote {
+                if eventType == MediaKeyEvent.systemDefinedEventType {
+                    return MediaKeyEvent(event) != nil
+                }
                 return eventType.isRemoteSuppressed
             }
 
             guard toggleSuppressionActive else { return false }
             guard eventType == .keyDown || eventType == .keyUp || eventType == .flagsChanged else { return false }
-            guard let keyCode else { return false }
+            let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
             return ToggleKeyCode.all.contains(keyCode)
         }
     }
@@ -168,6 +181,19 @@ final class RemoteModeController: @unchecked Sendable {
 
         guard mode == .remote else { return }
         sender.send(packetEncoder.button(button, isDown: isDown, clickCount: clickCount))
+    }
+
+    private func handleCapturedFunctionKey(type: CGEventType, event: CGEvent) {
+        guard event.getIntegerValueField(.keyboardEventAutorepeat) == 0 else { return }
+        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        guard let usage = FunctionKey.usage(forKeyCode: keyCode) else { return }
+        handleKey(usage: usage, isDown: type == .keyDown)
+    }
+
+    private func handleCapturedMediaKey(_ event: CGEvent) {
+        // Receivers generate their own repeats while the key stays pressed.
+        guard let mediaKey = MediaKeyEvent(event), !mediaKey.isRepeat else { return }
+        handleKey(usage: mediaKey.usage, isDown: mediaKey.isDown)
     }
 
     private func handleCapturedPointerMotion(_ event: CGEvent) {

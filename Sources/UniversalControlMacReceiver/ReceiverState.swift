@@ -88,6 +88,21 @@ final class ReceiverState {
             return
         }
 
+        if let mediaKey = HIDUsageMapper.mediaKey(for: packet.usage) {
+            if packet.isDown {
+                if pressedKeys.insert(packet.usage).inserted {
+                    injector.sendMediaKey(mediaKey, isDown: true, modifierMask: modifierMask)
+                    if mediaKey.isRepeatable {
+                        handlePressedRepeatableKey(packet.usage)
+                    }
+                }
+            } else if pressedKeys.remove(packet.usage) != nil {
+                injector.sendMediaKey(mediaKey, isDown: false, modifierMask: modifierMask)
+                handleReleasedRepeatableKey(packet.usage)
+            }
+            return
+        }
+
         if let modifierBit = HIDUsageMapper.modifierBit(for: packet.usage) {
             setModifier(bit: modifierBit, isDown: packet.isDown)
             return
@@ -193,6 +208,10 @@ final class ReceiverState {
         repeatablePressedKeysInOrder.removeAll()
 
         for usage in pressedKeys {
+            if let mediaKey = HIDUsageMapper.mediaKey(for: usage) {
+                injector.sendMediaKey(mediaKey, isDown: false, modifierMask: modifierMask)
+                continue
+            }
             guard let mapping = HIDUsageMapper.mapping(for: usage) else { continue }
             injector.sendKey(mapping, isDown: false, modifierMask: modifierMask)
         }
@@ -256,6 +275,11 @@ final class ReceiverState {
             return
         }
         guard clock.now >= nextKeyRepeat else { return }
+        if let mediaKey = HIDUsageMapper.mediaKey(for: usage) {
+            injector.sendMediaKey(mediaKey, isDown: true, isRepeat: true, modifierMask: modifierMask)
+            self.nextKeyRepeat = clock.now.advanced(by: keyboardRepeatConfiguration.interval)
+            return
+        }
         guard let mapping = HIDUsageMapper.mapping(for: usage) else {
             logUnknownUsage(usage)
             stopKeyRepeat()

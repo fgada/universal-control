@@ -16,7 +16,22 @@ struct MacKeyMapping {
     }
 }
 
+struct MacMediaKey {
+    let keyType: Int
+    let isRepeatable: Bool
+}
+
 enum HIDUsageMapper {
+    // NX_KEYTYPE_* values from IOKit/hidsystem/ev_keymap.h.
+    private static let mediaKeys: [UInt16: MacMediaKey] = [
+        SyntheticUsage.volumeUp: .init(keyType: 0, isRepeatable: true),
+        SyntheticUsage.volumeDown: .init(keyType: 1, isRepeatable: true),
+        SyntheticUsage.mute: .init(keyType: 7, isRepeatable: false),
+        SyntheticUsage.playPause: .init(keyType: 16, isRepeatable: false),
+        SyntheticUsage.nextTrack: .init(keyType: 17, isRepeatable: false),
+        SyntheticUsage.previousTrack: .init(keyType: 18, isRepeatable: false)
+    ]
+
     private static let keyMappings: [UInt16: MacKeyMapping] = [
         0x04: .init(0x00), 0x05: .init(0x0B), 0x06: .init(0x08), 0x07: .init(0x02),
         0x08: .init(0x0E), 0x09: .init(0x03), 0x0A: .init(0x05), 0x0B: .init(0x04),
@@ -80,6 +95,10 @@ enum HIDUsageMapper {
 
     static func mapping(for usage: UInt16) -> MacKeyMapping? {
         keyMappings[usage]
+    }
+
+    static func mediaKey(for usage: UInt16) -> MacMediaKey? {
+        mediaKeys[usage]
     }
 
     static func modifierBit(for usage: UInt16) -> Int? {

@@ -46,6 +46,30 @@ final class InputInjector {
         event.post(tap: .cghidEventTap)
     }
 
+    func sendMediaKey(_ mediaKey: MacMediaKey, isDown: Bool, isRepeat: Bool = false, modifierMask: UInt8) {
+        let keyState = isDown ? 0x0A : 0x0B
+        let data1 = (mediaKey.keyType << 16) | (keyState << 8) | (isRepeat ? 0x1 : 0)
+        let modifierFlags = NSEvent.ModifierFlags(
+            rawValue: UInt(keyState << 8) | UInt(HIDUsageMapper.eventFlags(for: modifierMask).rawValue)
+        )
+        guard let event = NSEvent.otherEvent(
+            with: .systemDefined,
+            location: .zero,
+            modifierFlags: modifierFlags,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 8, // NX_SUBTYPE_AUX_CONTROL_BUTTONS
+            data1: data1,
+            data2: -1
+        )?.cgEvent else {
+            fputs("Failed to create media key event.\n", stderr)
+            return
+        }
+
+        event.post(tap: .cghidEventTap)
+    }
+
     func sendKanaABCToggle(modifierMask: UInt8) {
         let currentInputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         let isASCIICapable = TISGetInputSourceProperty(

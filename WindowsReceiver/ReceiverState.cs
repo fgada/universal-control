@@ -77,7 +77,10 @@ internal sealed class ReceiverState
                 if (pressedKeys.Add(packet.Usage))
                 {
                     injector.SendKey(mapping, true);
-                    HandlePressedRepeatableKeyLocked(packet.Usage);
+                    if (mapping.Repeatable)
+                    {
+                        HandlePressedRepeatableKeyLocked(packet.Usage);
+                    }
                 }
 
                 return;
@@ -277,7 +280,10 @@ internal sealed class ReceiverState
 
             injector.SendKey(mapping, true);
             pressedKeys.Add(usage);
-            HandlePressedRepeatableKeyLocked(usage);
+            if (mapping.Repeatable)
+            {
+                HandlePressedRepeatableKeyLocked(usage);
+            }
         }
     }
 

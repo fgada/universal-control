@@ -4,7 +4,8 @@ internal readonly record struct KeyboardMapping(
     ushort Code,
     bool Extended,
     bool UsesVirtualKey = false,
-    bool RequiresNumLock = false);
+    bool RequiresNumLock = false,
+    bool Repeatable = true);
 
 internal static class HidUsageMapper
 {
@@ -116,7 +117,14 @@ internal static class HidUsageMapper
         [0xE4] = new(0x1D, true),
         [0xE5] = new(0x36, false),
         [0xE6] = new(0x38, true),
-        [0xE7] = new(0x5C, true)
+        [0xE7] = new(0x5C, true),
+        // Media keys from the sender's function row (synthetic usages).
+        [0xFF10] = new(0xAF, true, UsesVirtualKey: true), // VK_VOLUME_UP
+        [0xFF11] = new(0xAE, true, UsesVirtualKey: true), // VK_VOLUME_DOWN
+        [0xFF12] = new(0xAD, true, UsesVirtualKey: true, Repeatable: false), // VK_VOLUME_MUTE
+        [0xFF13] = new(0xB3, true, UsesVirtualKey: true, Repeatable: false), // VK_MEDIA_PLAY_PAUSE
+        [0xFF14] = new(0xB0, true, UsesVirtualKey: true, Repeatable: false), // VK_MEDIA_NEXT_TRACK
+        [0xFF15] = new(0xB1, true, UsesVirtualKey: true, Repeatable: false) // VK_MEDIA_PREV_TRACK
     };
 
     private static readonly ushort[] ModifierUsagesByBit =

@@ -12,12 +12,15 @@ internal enum PacketKind : byte
     Wheel = 5,
     Sync = 6,
     Text = 7,
-    Gesture = 8
+    Gesture = 8,
+    PointerAbsolute = 9
 }
 
 internal readonly record struct KeyPacket(ushort Usage, bool IsDown);
 internal readonly record struct ButtonPacket(byte Button, bool IsDown);
 internal readonly record struct PointerPacket(short Dx, short Dy);
+// Pointer position on the primary monitor, 0..65535 from left/top to right/bottom.
+internal readonly record struct PointerAbsolutePacket(ushort X, ushort Y);
 internal readonly record struct WheelPacket(short DeltaY);
 internal readonly record struct SyncPacket(byte ModifierMask, byte ButtonMask, ushort[] PressedKeys);
 
@@ -113,6 +116,21 @@ internal static class Protocol
         packet = new PointerPacket(
             BinaryPrimitives.ReadInt16LittleEndian(payload[..2]),
             BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(2, 2))
+        );
+        return true;
+    }
+
+    internal static bool TryReadPointerAbsolute(ReadOnlySpan<byte> payload, out PointerAbsolutePacket packet)
+    {
+        packet = default;
+        if (payload.Length != 4)
+        {
+            return false;
+        }
+
+        packet = new PointerAbsolutePacket(
+            BinaryPrimitives.ReadUInt16LittleEndian(payload[..2]),
+            BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(2, 2))
         );
         return true;
     }

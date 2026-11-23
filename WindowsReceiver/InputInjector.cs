@@ -15,6 +15,7 @@ internal sealed class InputInjector
     private const uint MouseEventMiddleDown = 0x0020;
     private const uint MouseEventMiddleUp = 0x0040;
     private const uint MouseEventWheel = 0x0800;
+    private const uint MouseEventAbsolute = 0x8000;
 
     private const uint KeyEventExtendedKey = 0x0001;
     private const uint KeyEventKeyUp = 0x0002;
@@ -177,6 +178,30 @@ internal sealed class InputInjector
         };
 
         Send("pointer", input);
+    }
+
+    // Absolute coordinates are 0..65535 across the primary monitor and are not
+    // affected by pointer speed or "Enhance pointer precision".
+    internal void SendAbsolutePointer(ushort x, ushort y)
+    {
+        var input = new INPUT
+        {
+            type = InputMouse,
+            U = new InputUnion
+            {
+                mi = new MOUSEINPUT
+                {
+                    dx = x,
+                    dy = y,
+                    mouseData = 0,
+                    dwFlags = MouseEventMove | MouseEventAbsolute,
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+
+        Send("pointer absolute", input);
     }
 
     internal void SendWheel(short deltaY)

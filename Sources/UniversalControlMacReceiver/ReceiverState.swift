@@ -44,6 +44,14 @@ final class ReceiverState {
                 buttonMask: buttonMask,
                 modifierMask: modifierMask
             )
+        case let .pointerAbsolute(packet):
+            guard sessionActive, !awaitingResync else { return }
+            injector.sendAbsolutePointer(
+                x: packet.x,
+                y: packet.y,
+                buttonMask: buttonMask,
+                modifierMask: modifierMask
+            )
         case let .wheel(packet):
             guard sessionActive, !awaitingResync else { return }
             injector.sendWheel(deltaY: packet.deltaY, modifierMask: modifierMask)

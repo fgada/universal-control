@@ -141,6 +141,19 @@ internal sealed class ReceiverState
         }
     }
 
+    internal void HandlePointerAbsolute(PointerAbsolutePacket packet)
+    {
+        lock (gate)
+        {
+            if (!sessionActive || awaitingResync)
+            {
+                return;
+            }
+
+            injector.SendAbsolutePointer(packet.X, packet.Y);
+        }
+    }
+
     internal void HandleWheel(WheelPacket packet)
     {
         lock (gate)

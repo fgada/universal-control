@@ -112,6 +112,23 @@ final class InputInjector {
             CGPoint(x: currentLocation.x + CGFloat(dx), y: currentLocation.y + CGFloat(dy)),
             from: currentLocation
         )
+        postPointerMove(from: currentLocation, to: targetLocation, buttonMask: buttonMask, modifierMask: modifierMask)
+    }
+
+    /// Moves the pointer to a position on the main display, given as 0...65535
+    /// from left/top to right/bottom (so the sender needs no display size).
+    func sendAbsolutePointer(x: UInt16, y: UInt16, buttonMask: UInt8, modifierMask: UInt8) {
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        let targetLocation = CGPoint(
+            x: (bounds.minX + (bounds.width - 1) * CGFloat(x) / 65535).rounded(),
+            y: (bounds.minY + (bounds.height - 1) * CGFloat(y) / 65535).rounded()
+        )
+        let currentLocation = CGEvent(source: eventSource)?.location ?? .zero
+        guard targetLocation != currentLocation else { return }
+        postPointerMove(from: currentLocation, to: targetLocation, buttonMask: buttonMask, modifierMask: modifierMask)
+    }
+
+    private func postPointerMove(from currentLocation: CGPoint, to targetLocation: CGPoint, buttonMask: UInt8, modifierMask: UInt8) {
         let drag = dragEvent(for: buttonMask)
         guard let event = CGEvent(
             mouseEventSource: eventSource,

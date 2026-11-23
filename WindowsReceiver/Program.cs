@@ -99,6 +99,17 @@ internal static class Program
                         }
                         break;
 
+                    case PacketKind.PointerAbsolute:
+                        if (Protocol.TryReadPointerAbsolute(payload, out var pointerAbsolutePacket))
+                        {
+                            receiverState.HandlePointerAbsolute(pointerAbsolutePacket);
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine("Ignoring malformed pointer absolute packet.");
+                        }
+                        break;
+
                     case PacketKind.Wheel:
                         if (Protocol.TryReadWheel(payload, out var wheelPacket))
                         {

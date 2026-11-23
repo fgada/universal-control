@@ -280,6 +280,7 @@ macOS receiverは入力注入のため、次を許可してください。未許
 - `6`: sync
 - `7`: text（UTF-8、最大60 KiB）
 - `8`: gesture（シリアライズしたmacOS Quartzイベント、最大60 KiB）
+- `9`: pointer absolute（`UInt16` x / `UInt16` y。receiverのメインディスプレイ上の位置を、左上 `0` 〜右下 `65535` で表す。Windowsはプライマリモニター）
 
 システム機能キーは`key` / `sync`の中で独自usage（`0xFF10`音量+、`0xFF11`音量−、`0xFF12`ミュート、`0xFF13`再生/一時停止、`0xFF14`次の曲、`0xFF15`前の曲）として送ります。
 

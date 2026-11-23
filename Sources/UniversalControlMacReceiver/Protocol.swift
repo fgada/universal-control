@@ -9,6 +9,7 @@ enum PacketKind: UInt8 {
     case sync = 6
     case text = 7
     case gesture = 8
+    case pointerAbsolute = 9
 }
 
 enum SyntheticUsage {
@@ -37,6 +38,12 @@ struct PointerPacket: Equatable {
     let dy: Int16
 }
 
+/// Pointer position on the main display, 0...65535 from left/top to right/bottom.
+struct PointerAbsolutePacket: Equatable {
+    let x: UInt16
+    let y: UInt16
+}
+
 struct WheelPacket: Equatable {
     let deltaY: Int16
 }
@@ -56,6 +63,7 @@ enum PacketBody: Equatable {
     case sync(SyncPacket)
     case text(String)
     case gesture(Data)
+    case pointerAbsolute(PointerAbsolutePacket)
 }
 
 struct DecodedPacket: Equatable {
@@ -150,6 +158,13 @@ enum ProtocolDecoder {
                 throw PacketDecodingError.malformedPayload(kind)
             }
             body = .gesture(Data(payload))
+
+        case .pointerAbsolute:
+            guard payload.count == 4 else { throw PacketDecodingError.malformedPayload(kind) }
+            body = .pointerAbsolute(PointerAbsolutePacket(
+                x: readUInt16(payload, at: 0),
+                y: readUInt16(payload, at: 2)
+            ))
         }
 
         return DecodedPacket(sequence: sequence, body: body)
@@ -178,6 +193,7 @@ private extension PacketKind {
         case .sync: "sync"
         case .text: "text"
         case .gesture: "gesture"
+        case .pointerAbsolute: "pointer absolute"
         }
     }
 }
